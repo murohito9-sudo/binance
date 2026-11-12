@@ -1,0 +1,414 @@
+<!doctype html>
+<html lang="id">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#f7f8f7" />
+    <meta
+      name="description"
+      content="Nalar AI — teman berpikir untuk ide, pekerjaan, dan hal yang ingin kamu pahami."
+    />
+    <title>Nalar AI — Teman berpikir setiap hari</title>
+    <link
+      rel="icon"
+      href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='20' fill='%23167c78'/%3E%3Cpath d='M19 44V20l26 24V20' fill='none' stroke='white' stroke-width='6' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E"
+    />
+    <link rel="stylesheet" href="/styles.css" />
+    <script src="/app.js" defer></script>
+  </head>
+  <body>
+    <a class="skip-link" href="#mainContent">Lewati ke percakapan</a>
+    <div class="app-shell" id="appShell">
+      <aside class="sidebar" id="sidebar" aria-label="Navigasi percakapan">
+        <div class="sidebar-top">
+          <a class="brand" href="/" aria-label="Nalar AI, beranda">
+            <span class="brand-mark" aria-hidden="true"
+              ><svg viewBox="0 0 32 32"><path d="M8 23V9l16 14V9" /></svg
+            ></span>
+            <span class="brand-name">nalar<span>.</span></span>
+          </a>
+          <button
+            class="icon-button sidebar-close"
+            id="closeSidebar"
+            type="button"
+            aria-label="Tutup navigasi"
+          >
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path d="m7 7 10 10M17 7 7 17" />
+            </svg>
+          </button>
+        </div>
+        <button class="new-chat-button" id="newChat" type="button">
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M12 5v14M5 12h14" />
+          </svg>
+          <span>Percakapan baru</span>
+          <kbd>⌘ K</kbd>
+        </button>
+        <label class="search-box" for="searchInput">
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <circle cx="10.8" cy="10.8" r="6.8" />
+            <path d="m16 16 4.5 4.5" />
+          </svg>
+          <input
+            id="searchInput"
+            type="search"
+            placeholder="Cari percakapan"
+            autocomplete="off"
+          />
+          <kbd>/</kbd>
+        </label>
+        <div class="history-heading">
+          <span>Terakhir dibuka</span
+          ><span class="history-count" id="historyCount"></span>
+        </div>
+        <nav
+          class="conversation-list"
+          id="conversationList"
+          aria-label="Riwayat percakapan"
+          aria-live="polite"
+        ></nav>
+        <div class="sidebar-footer">
+          <div class="guest-note">
+            <span class="guest-avatar" aria-hidden="true">N</span
+            ><span
+              ><strong>Mode tamu</strong
+              ><small>Riwayat tersimpan di browser ini</small></span
+            >
+          </div>
+          <button
+            class="text-button privacy-note"
+            id="privacyInfo"
+            type="button"
+          >
+            Tentang privasi
+          </button>
+        </div>
+      </aside>
+
+      <button
+        class="sidebar-scrim"
+        id="sidebarScrim"
+        type="button"
+        tabindex="-1"
+        aria-label="Tutup navigasi"
+      ></button>
+
+      <main class="main-area" id="mainContent">
+        <header class="topbar">
+          <div class="topbar-left">
+            <button
+              class="icon-button menu-toggle"
+              id="openSidebar"
+              type="button"
+              aria-label="Buka navigasi"
+            >
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M4 7h16M4 12h16M4 17h16" />
+              </svg>
+            </button>
+            <div class="mobile-brand">
+              <span class="brand-mark small" aria-hidden="true"
+                ><svg viewBox="0 0 32 32">
+                  <path d="M8 23V9l16 14V9" /></svg></span
+              ><span class="brand-name">nalar<span>.</span></span>
+            </div>
+            <span class="conversation-title" id="conversationTitle"
+              >Percakapan baru</span
+            >
+          </div>
+          <div class="topbar-right">
+            <label class="mode-select-wrap" for="modeSelect">
+              <span class="mode-sparkle" aria-hidden="true">✳</span>
+              <select id="modeSelect" aria-label="Pilih mode jawaban" aria-describedby="modeDescription">
+                <option value="balanced">Seimbang</option>
+                <option value="concise">Ringkas</option>
+                <option value="creative">Kreatif</option>
+              </select>
+              <svg
+                class="select-chevron"
+                viewBox="0 0 24 24"
+                aria-hidden="true"
+              >
+                <path d="m7 10 5 5 5-5" />
+              </svg>
+            </label>
+            <span class="mode-description" id="modeDescription"></span>
+            <button
+              class="icon-button rename-current"
+              id="renameCurrent"
+              type="button"
+              aria-label="Ubah nama percakapan"
+              title="Ubah nama percakapan"
+              hidden
+            >
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M12 20h9" />
+                <path d="m16.5 3.5 4 4L8 20H4v-4z" />
+              </svg>
+            </button>
+          </div>
+        </header>
+
+        <section
+          class="chat-scroll"
+          id="chatScroll"
+          aria-label="Isi percakapan"
+        >
+          <div class="welcome" id="welcomePanel">
+            <div class="welcome-mark" aria-hidden="true">
+              <span class="brand-mark large"
+                ><svg viewBox="0 0 32 32"><path d="M8 23V9l16 14V9" /></svg
+              ></span>
+            </div>
+            <p class="eyebrow">RUANG UNTUK BERPIKIR</p>
+            <h1>Hai, mau mulai dari mana?</h1>
+            <p class="welcome-copy">
+              Tanyakan apa saja, tuangkan ide, atau kerjakan sesuatu bersama
+              Nalar.
+            </p>
+            <div class="suggestions" aria-label="Contoh pertanyaan">
+              <button
+                class="suggestion-card"
+                type="button"
+                data-prompt="Bantu saya merencanakan minggu yang lebih teratur"
+              >
+                <span class="suggestion-icon mint" aria-hidden="true"
+                  ><svg viewBox="0 0 24 24">
+                    <rect x="3.5" y="5" width="17" height="15" rx="2" />
+                    <path
+                      d="M7.5 3v4M16.5 3v4M4 9h16M8 13h2m4 0h2m-8 3h2"
+                    /></svg
+                ></span>
+                <span
+                  ><strong>Rencanakan minggu saya</strong
+                  ><small>Ubah daftar panjang jadi langkah kecil</small></span
+                >
+                <svg
+                  class="suggestion-arrow"
+                  viewBox="0 0 24 24"
+                  aria-hidden="true"
+                >
+                  <path d="M7 17 17 7M7 7h10v10" />
+                </svg>
+              </button>
+              <button
+                class="suggestion-card"
+                type="button"
+                data-prompt="Jelaskan kecerdasan buatan dengan analogi yang mudah dipahami"
+              >
+                <span class="suggestion-icon lilac" aria-hidden="true"
+                  ><svg viewBox="0 0 24 24">
+                    <path
+                      d="M12 3a7 7 0 0 0-4 12.75V19h8v-3.25A7 7 0 0 0 12 3Z"
+                    />
+                    <path d="M9 22h6M9 11l2 2 4-4" /></svg
+                ></span>
+                <span
+                  ><strong>Pahami hal baru</strong
+                  ><small>Jelaskan dengan cara yang sederhana</small></span
+                >
+                <svg
+                  class="suggestion-arrow"
+                  viewBox="0 0 24 24"
+                  aria-hidden="true"
+                >
+                  <path d="M7 17 17 7M7 7h10v10" />
+                </svg>
+              </button>
+              <button
+                class="suggestion-card"
+                type="button"
+                data-prompt="Bantu saya menulis email yang jelas dan tetap terasa ramah"
+              >
+                <span class="suggestion-icon peach" aria-hidden="true"
+                  ><svg viewBox="0 0 24 24">
+                    <rect x="3" y="5" width="18" height="14" rx="2" />
+                    <path d="m4 7 8 6 8-6" /></svg
+                ></span>
+                <span
+                  ><strong>Tulis sesuatu</strong
+                  ><small>Mulai dari draf, rapikan bersama</small></span
+                >
+                <svg
+                  class="suggestion-arrow"
+                  viewBox="0 0 24 24"
+                  aria-hidden="true"
+                >
+                  <path d="M7 17 17 7M7 7h10v10" />
+                </svg>
+              </button>
+              <button
+                class="suggestion-card"
+                type="button"
+                data-prompt="Saya punya ide baru. Bantu saya mengeksplorasi kemungkinan dan langkah awalnya"
+              >
+                <span class="suggestion-icon blue" aria-hidden="true"
+                  ><svg viewBox="0 0 24 24">
+                    <path
+                      d="m12 3 1.9 5.8L20 11l-6.1 2.2L12 19l-1.9-5.8L4 11l6.1-2.2L12 3Z"
+                    />
+                    <path
+                      d="m19 14 .9 2.1L22 17l-2.1.9L19 20l-.9-2.1L16 17l2.1-.9L19 14Z"
+                    /></svg
+                ></span>
+                <span
+                  ><strong>Jelajahi sebuah ide</strong
+                  ><small>Pikirkan kemungkinan berikutnya</small></span
+                >
+                <svg
+                  class="suggestion-arrow"
+                  viewBox="0 0 24 24"
+                  aria-hidden="true"
+                >
+                  <path d="M7 17 17 7M7 7h10v10" />
+                </svg>
+              </button>
+            </div>
+          </div>
+          <div
+            class="messages"
+            id="messages"
+            aria-live="polite"
+            aria-relevant="additions text"
+          ></div>
+          <div class="bottom-anchor" id="bottomAnchor"></div>
+        </section>
+
+        <div class="composer-zone" id="composerZone">
+          <div class="drop-overlay" id="dropOverlay" aria-hidden="true">
+            <span>Lepaskan berkas untuk melampirkannya</span>
+          </div>
+          <div class="attachment-tray" id="attachmentTray" hidden></div>
+          <form class="composer" id="composerForm">
+            <label class="sr-only" for="promptInput"
+              >Pesan untuk Nalar AI</label
+            >
+            <textarea
+              id="promptInput"
+              rows="1"
+              maxlength="20000"
+              placeholder="Tanyakan apa saja…"
+              aria-describedby="composerHint"
+            ></textarea>
+            <div class="composer-toolbar">
+              <div class="composer-actions">
+                <button
+                  class="attach-button"
+                  id="attachButton"
+                  type="button"
+                  aria-label="Lampirkan gambar atau PDF"
+                  title="Lampirkan gambar atau PDF"
+                >
+                  <svg viewBox="0 0 24 24" aria-hidden="true">
+                    <path
+                      d="m21.4 11.1-8.5 8.5a6 6 0 0 1-8.5-8.5l9.2-9.2a4 4 0 0 1 5.7 5.7l-9.2 9.2a2 2 0 0 1-2.8-2.8l8.5-8.5"
+                    />
+                  </svg>
+                  <span>Lampirkan</span>
+                </button>
+                <span class="composer-hint" id="composerHint"
+                  >PDF atau gambar, maks. 10 MB</span
+                >
+              </div>
+              <div class="send-actions">
+                <span class="keyboard-hint">Enter untuk kirim</span>
+                <button
+                  class="send-button"
+                  id="sendButton"
+                  type="submit"
+                  aria-label="Kirim pesan"
+                >
+                  <svg class="send-icon" viewBox="0 0 24 24" aria-hidden="true">
+                    <path d="m5 12 14-7-4 14-3-6-7-1Z" />
+                    <path d="m12 13 7-8" />
+                  </svg>
+                  <span class="send-spinner" aria-hidden="true"></span>
+                </button>
+              </div>
+            </div>
+          </form>
+          <input
+            class="sr-only"
+            id="fileInput"
+            type="file"
+            accept="image/png,image/jpeg,image/webp,application/pdf"
+            multiple
+          />
+          <p class="disclaimer">
+            Nalar bisa membuat kekeliruan. Periksa kembali informasi penting.
+          </p>
+        </div>
+      </main>
+    </div>
+    <div
+      class="toast-region"
+      id="toastRegion"
+      aria-live="polite"
+      aria-atomic="true"
+    ></div>
+    <dialog
+      class="small-dialog"
+      id="renameDialog"
+      aria-labelledby="renameHeading"
+    >
+      <form method="dialog" id="renameForm">
+        <button
+          class="dialog-close icon-button"
+          value="cancel"
+          aria-label="Tutup"
+        >
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <path d="m7 7 10 10M17 7 7 17" />
+          </svg>
+        </button>
+        <h2 id="renameHeading">Ubah nama percakapan</h2>
+        <label class="sr-only" for="renameInput">Nama percakapan</label>
+        <input
+          id="renameInput"
+          maxlength="120"
+          placeholder="Nama percakapan"
+          required
+        />
+        <div class="dialog-actions">
+          <button class="secondary-button" value="cancel">Batal</button
+          ><button class="primary-button" id="saveRename" value="default">
+            Simpan
+          </button>
+        </div>
+      </form>
+    </dialog>
+    <dialog
+      class="small-dialog"
+      id="privacyDialog"
+      aria-labelledby="privacyHeading"
+    >
+      <form method="dialog">
+        <button
+          class="dialog-close icon-button"
+          value="cancel"
+          aria-label="Tutup"
+        >
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <path d="m7 7 10 10M17 7 7 17" />
+          </svg>
+        </button>
+        <span class="dialog-icon" aria-hidden="true"
+          ><svg viewBox="0 0 24 24">
+            <path d="M12 22s8-4 8-11V5l-8-3-8 3v6c0 7 8 11 8 11Z" />
+            <path d="m9 12 2 2 4-4" /></svg
+        ></span>
+        <h2 id="privacyHeading">Percakapanmu</h2>
+        <p>
+          Riwayat disimpan untuk ID tamu pada browser ini. Tanpa akun, riwayat
+          tidak tersinkron antarperangkat. Pesan dikirim ke layanan AI untuk
+          menghasilkan jawaban. Menghapus percakapan menghapus riwayat chat;
+          berkas yang sudah diunggah tidak otomatis terhapus dari penyimpanan.
+        </p>
+        <div class="dialog-actions">
+          <button class="primary-button" value="cancel">Mengerti</button>
+        </div>
+      </form>
+    </dialog>
+  </body>
+</html>

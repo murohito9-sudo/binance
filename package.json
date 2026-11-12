@@ -1,0 +1,15 @@
+{
+  "name": "nalarai",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Asisten AI percakapan berbahasa Indonesia",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "mysql2": "^3.14.1"
+  }
+}
