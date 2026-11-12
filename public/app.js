@@ -17,7 +17,6 @@
     creative: "Kreatif untuk ide dan eksplorasi",
   };
   const state = {
-    ownerId: getOwnerId(),
     conversationId: null,
     conversations: [],
     files: [],
@@ -67,30 +66,21 @@
     privacyDialog: $("#privacyDialog"),
   };
 
-  function getOwnerId() {
-    let id = localStorage.getItem("nalar:visitor");
-    if (!id) {
-      id =
-        globalThis.crypto?.randomUUID?.() ||
-        "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, (c) => {
-          const r = (Math.random() * 16) | 0;
-          return (c === "x" ? r : (r & 3) | 8).toString(16);
-        });
-      localStorage.setItem("nalar:visitor", id);
-    }
-    return id;
-  }
-
   async function api(path, options = {}) {
+    const method = String(options.method || "GET").toUpperCase();
     const response = await fetch(path, {
       ...options,
       headers: {
         ...(options.body instanceof Blob
           ? {}
           : { "Content-Type": "application/json" }),
+        ...(method !== "GET" && window.NalarAuth?.csrfToken
+          ? { "X-CSRF-Token": window.NalarAuth.csrfToken }
+          : {}),
         ...(options.headers || {}),
       },
     });
+    if (response.status === 401) window.NalarAuth?.expire();
     if (!response.ok) {
       let message = `Permintaan gagal (${response.status}).`;
       try {
@@ -446,7 +436,7 @@
   async function loadMessages(id) {
     const requestId = ++state.messageRequestId;
     const result = await api(
-      `/api/conversations/${encodeURIComponent(id)}/messages?ownerId=${encodeURIComponent(state.ownerId)}`,
+      `/api/conversations/${encodeURIComponent(id)}/messages`,
     );
     if (requestId !== state.messageRequestId || id !== state.conversationId)
       return;
@@ -522,9 +512,7 @@
   async function loadConversations() {
     const requestId = ++state.listRequestId;
     const q = ui.search.value.trim();
-    const result = await api(
-      `/api/conversations?ownerId=${encodeURIComponent(state.ownerId)}&q=${encodeURIComponent(q)}`,
-    );
+    const result = await api(`/api/conversations?q=${encodeURIComponent(q)}`);
     if (requestId !== state.listRequestId) return;
     state.conversations = result.conversations || [];
     renderConversationList();
@@ -587,7 +575,6 @@
     const result = await api("/api/conversations", {
       method: "POST",
       body: JSON.stringify({
-        ownerId: state.ownerId,
         title: title.slice(0, 120),
         mode: state.activeMode,
       }),
@@ -601,13 +588,15 @@
 
   async function uploadFile(file, conversationId) {
     const query = new URLSearchParams({
-      ownerId: state.ownerId,
       conversationId,
       name: safeFileName(file.name),
     });
     const response = await fetch(`/api/uploads?${query}`, {
       method: "POST",
-      headers: { "Content-Type": file.type },
+      headers: {
+        "Content-Type": file.type,
+        "X-CSRF-Token": window.NalarAuth.csrfToken,
+      },
       body: file,
     });
     if (!response.ok) {
@@ -689,9 +678,11 @@
       const response = await fetch("/api/chat", {
         method: "POST",
         signal: state.controller.signal,
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          "X-CSRF-Token": window.NalarAuth.csrfToken,
+        },
         body: JSON.stringify({
-          ownerId: state.ownerId,
           conversationId,
           prompt,
           attachments,
@@ -892,10 +883,9 @@
     );
     if (!ok) return;
     try {
-      await api(
-        `/api/conversations/${encodeURIComponent(id)}?ownerId=${encodeURIComponent(state.ownerId)}`,
-        { method: "DELETE" },
-      );
+      await api(`/api/conversations/${encodeURIComponent(id)}`, {
+        method: "DELETE",
+      });
       if (state.conversationId === id) startNewChat(false);
       await loadConversations();
       toast("Riwayat percakapan dihapus.");
@@ -914,7 +904,7 @@
         `/api/conversations/${encodeURIComponent(state.conversationId)}`,
         {
           method: "PATCH",
-          body: JSON.stringify({ ownerId: state.ownerId, mode }),
+          body: JSON.stringify({ mode }),
         },
       );
       const current = selectedConversation();
@@ -1007,7 +997,7 @@
     try {
       await api(`/api/conversations/${encodeURIComponent(id)}`, {
         method: "PATCH",
-        body: JSON.stringify({ ownerId: state.ownerId, title }),
+        body: JSON.stringify({ title }),
       });
       ui.renameDialog.close();
       if (state.conversationId === id) setTitle(title);
@@ -1043,7 +1033,7 @@
       try {
         await api("/api/feedback", {
           method: "POST",
-          body: JSON.stringify({ ownerId: state.ownerId, messageId, value }),
+          body: JSON.stringify({ messageId, value }),
         });
         setFeedbackButtonState(button, value);
         toast(
@@ -1111,6 +1101,8 @@
   });
 
   (async function init() {
+    const authenticated = await window.NalarAuth.ready;
+    if (!authenticated) return;
     resizeInput();
     showWelcome(true);
     try {

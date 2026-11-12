@@ -14,11 +14,39 @@
       href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='20' fill='%23167c78'/%3E%3Cpath d='M19 44V20l26 24V20' fill='none' stroke='white' stroke-width='6' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E"
     />
     <link rel="stylesheet" href="/styles.css" />
+    <script src="/auth.js" defer></script>
+    <script src="/spot.js" defer></script>
     <script src="/app.js" defer></script>
   </head>
   <body>
     <a class="skip-link" href="#mainContent">Lewati ke percakapan</a>
-    <div class="app-shell" id="appShell">
+    <section class="login-gate" id="loginGate" aria-labelledby="loginHeading">
+      <div class="login-card">
+        <span class="brand-mark large" aria-hidden="true"
+          ><svg viewBox="0 0 32 32"><path d="M8 23V9l16 14V9" /></svg
+        ></span>
+        <p class="eyebrow">RUANG PEMILIK</p>
+        <h1 id="loginHeading">Masuk ke Nalar</h1>
+        <p>
+          Gunakan akun Manus pemilik yang diizinkan. Percakapan dan analisis
+          akun hanya tersedia setelah identitas berhasil diverifikasi.
+        </p>
+        <button
+          class="primary-button login-button"
+          id="loginButton"
+          type="button"
+        >
+          Masuk dengan akun Manus
+        </button>
+        <p
+          class="login-message"
+          id="loginMessage"
+          role="status"
+          aria-live="polite"
+        ></p>
+      </div>
+    </section>
+    <div class="app-shell" id="appShell" hidden>
       <aside class="sidebar" id="sidebar" aria-label="Navigasi percakapan">
         <div class="sidebar-top">
           <a class="brand" href="/" aria-label="Nalar AI, beranda">
@@ -44,6 +72,17 @@
           </svg>
           <span>Percakapan baru</span>
           <kbd>⌘ K</kbd>
+        </button>
+        <button
+          class="spot-nav"
+          id="spotNav"
+          type="button"
+          aria-current="false"
+        >
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M4 18V6m0 12h16M8 15l3-4 3 2 5-7" />
+          </svg>
+          <span>Analisis Binance Spot</span>
         </button>
         <label class="search-box" for="searchInput">
           <svg viewBox="0 0 24 24" aria-hidden="true">
@@ -72,10 +111,17 @@
           <div class="guest-note">
             <span class="guest-avatar" aria-hidden="true">N</span
             ><span
-              ><strong>Mode tamu</strong
-              ><small>Riwayat tersimpan di browser ini</small></span
+              ><strong>Akun pemilik</strong
+              ><small>Sesi privat Nalar AI</small></span
             >
           </div>
+          <button
+            class="text-button logout-button"
+            id="logoutButton"
+            type="button"
+          >
+            Keluar
+          </button>
           <button
             class="text-button privacy-note"
             id="privacyInfo"
@@ -120,7 +166,11 @@
           <div class="topbar-right">
             <label class="mode-select-wrap" for="modeSelect">
               <span class="mode-sparkle" aria-hidden="true">✳</span>
-              <select id="modeSelect" aria-label="Pilih mode jawaban" aria-describedby="modeDescription">
+              <select
+                id="modeSelect"
+                aria-label="Pilih mode jawaban"
+                aria-describedby="modeDescription"
+              >
                 <option value="balanced">Seimbang</option>
                 <option value="concise">Ringkas</option>
                 <option value="creative">Kreatif</option>
@@ -149,6 +199,124 @@
             </button>
           </div>
         </header>
+
+        <section
+          class="spot-panel"
+          id="spotPanel"
+          aria-labelledby="spotHeading"
+          hidden
+        >
+          <div class="spot-panel-inner">
+            <div class="spot-heading-row">
+              <div>
+                <p class="eyebrow">ANALISIS MANUAL · BACA-SAJA</p>
+                <h1 id="spotHeading">Binance Spot</h1>
+                <p class="spot-intro">
+                  Baca saldo saat diminta, lalu hitung skenario ATR untuk posisi
+                  Spot long. Nalar tidak mengirim order.
+                </p>
+              </div>
+              <button class="secondary-button" id="spotBack" type="button">
+                Kembali ke chat
+              </button>
+            </div>
+            <div
+              class="spot-status"
+              id="spotStatus"
+              role="status"
+              aria-live="polite"
+            >
+              Memeriksa konfigurasi…
+            </div>
+            <section class="spot-card" aria-labelledby="spotSafetyHeading">
+              <h2 id="spotSafetyHeading">Koneksi dengan batas ketat</h2>
+              <p>
+                Gunakan API key Binance dengan izin baca data akun saja. Jangan
+                aktifkan trade, withdrawal, Margin, atau Futures. V1 hanya
+                menandatangani permintaan <code>GET</code> akun Spot; data akun
+                tidak dikirim ke model AI dan tidak disimpan ke chat atau
+                database.
+              </p>
+              <button
+                class="primary-button"
+                id="syncBinance"
+                type="button"
+                disabled
+              >
+                Sinkronkan saldo Spot
+              </button>
+            </section>
+            <section class="spot-card" aria-labelledby="spotBalancesHeading">
+              <div class="spot-section-heading">
+                <div>
+                  <h2 id="spotBalancesHeading">Saldo Spot</h2>
+                  <p>
+                    Free dan locked · hasil terbaru hanya berada di tab ini.
+                  </p>
+                </div>
+              </div>
+              <div class="spot-balances" id="spotBalances"></div>
+            </section>
+            <form class="spot-card spot-form" id="spotAnalysisForm">
+              <h2>Usulan stop-loss berbasis ATR(14)</h2>
+              <p>
+                Isi harga masuk rata-rata dan batas kerugian yang kamu tentukan
+                sendiri. Ini hanya tiga skenario hitung, bukan order atau
+                jaminan.
+              </p>
+              <div class="spot-fields">
+                <label for="spotAsset"
+                  >Aset dari saldo
+                  <select id="spotAsset" required>
+                    <option value="">Sinkronkan saldo terlebih dahulu</option>
+                  </select></label
+                >
+                <label for="spotInterval"
+                  >Timeframe
+                  <select id="spotInterval">
+                    <option value="1h">1 jam</option>
+                    <option value="4h">4 jam</option>
+                    <option value="1d">1 hari</option>
+                  </select></label
+                >
+                <label for="spotEntryPrice"
+                  >Harga masuk rata-rata (USDT)
+                  <input
+                    id="spotEntryPrice"
+                    type="number"
+                    min="0.00000001"
+                    step="any"
+                    inputmode="decimal"
+                    required
+                /></label>
+                <label for="spotRiskBudget"
+                  >Batas kerugian pilihanmu (USDT)
+                  <input
+                    id="spotRiskBudget"
+                    type="number"
+                    min="0.00000001"
+                    step="any"
+                    inputmode="decimal"
+                    required
+                /></label>
+              </div>
+              <p class="spot-smallprint">
+                Jumlah aset dihitung ulang dari Binance saat analisis.
+                Perhitungan tidak memasukkan fee, spread, gap, slippage, pajak,
+                atau perubahan harga setelah waktu pengambilan data.
+              </p>
+              <button class="primary-button" type="submit">
+                Hitung skenario
+              </button>
+              <div class="spot-result" id="spotResult" aria-live="polite"></div>
+            </form>
+            <p class="spot-final-note">
+              Data Binance adalah satu sumber. Tinjau sendiri asumsi dan risiko;
+              Nalar tidak dapat membuat, mengubah, membatalkan, menandatangani,
+              atau mengirim transaksi.
+            </p>
+          </div>
+        </section>
 
         <section
           class="chat-scroll"
@@ -400,10 +568,11 @@
         ></span>
         <h2 id="privacyHeading">Percakapanmu</h2>
         <p>
-          Riwayat disimpan untuk ID tamu pada browser ini. Tanpa akun, riwayat
-          tidak tersinkron antarperangkat. Pesan dikirim ke layanan AI untuk
-          menghasilkan jawaban. Menghapus percakapan menghapus riwayat chat;
-          berkas yang sudah diunggah tidak otomatis terhapus dari penyimpanan.
+          Akses aplikasi dibatasi ke akun Manus pemilik. Riwayat percakapan
+          disimpan di database proyek; pesan dikirim ke layanan AI untuk
+          menghasilkan jawaban. Data saldo dan input harga/risiko Binance hanya
+          diproses saat diminta dan tidak disimpan ke chat atau database. Berkas
+          yang telah diunggah tidak otomatis terhapus saat chat dihapus.
         </p>
         <div class="dialog-actions">
           <button class="primary-button" value="cancel">Mengerti</button>

@@ -1,7 +1,7 @@
 # Rencana Nalar AI
 
 ## Tujuan
-Menyempurnakan aplikasi lampiran yang semula berupa dashboard kripto/J.A.R.V.I.S. menjadi aplikasi asisten AI percakapan yang terasa familier, ringkas, dan siap dipakai. Hanya elemen sumber yang mendukung pengalaman asisten yang dipertahankan; panel metrik kripto, efek boot, dan dekorasi HUD tidak digunakan.
+Menyempurnakan aplikasi lampiran yang semula berupa dashboard kripto/J.A.R.V.I.S. menjadi aplikasi asisten AI percakapan yang familier, ringkas, dan siap dipakai, lalu menambahkan ruang analisis Binance Spot baca-saja untuk pemilik. Hanya elemen sumber yang mendukung pengalaman asisten dipertahankan; transaksi nyata tidak pernah dikirim.
 
 ## Arah visual
 Alternatif gaya yang dipertimbangkan: editorial Swiss yang tenang (0,061); neo-brutalisme hangat (0,038); terminal sci-fi sinematik (0,012). Dipilih editorial Swiss yang tenang agar fokus percakapan lebih utama daripada dekorasi.
@@ -20,29 +20,41 @@ Alternatif gaya yang dipertimbangkan: editorial Swiss yang tenang (0,061); neo-b
 - **Warna merek:** teal-biru gelap `#167C78` sebagai aksen khas.
 
 ## Arsitektur implementasi
-- Aplikasi ringan dengan Node.js HTTP server, HTML/CSS/JavaScript di `public/`, tanpa framework UI; ini menjaga starter kosong tetap sederhana.
-- `server.js` menyediakan aset statis dan API. `mysql2` menghubungkan `DATABASE_URL`; skema percakapan/pesan dibuat idempoten dengan `CREATE TABLE IF NOT EXISTS`, tanpa operasi hapus/migrasi destruktif.
-- LLM dipanggil hanya dari server melalui `$MANUS_API_URL/v1/chat/completions` dengan `$MANUS_API_KEY`; kunci tidak masuk ke browser. Percakapan sebelumnya dikirim sebagai konteks. Mode Seimbang/Ringkas/Kreatif mengubah instruksi gaya, bukan mengklaim model berbeda.
-- Jawaban dikirim ke browser dengan SSE agar status dan teks mengalir; teks tersimpan di database setelah aliran selesai. API memiliki penanganan error dan pembatalan.
-- File gambar dan PDF diunggah melalui alur presigned storage. Server membatasi jenis/ukuran dan mengirim URL unduhan sementara ke LLM untuk permintaan multimodal; indeks lampiran disimpan bersama pesan. Kunci API dan signed URL tidak dicatat ke log.
-- Identitas tamu berupa UUID sisi-klien dipakai sebagai ruang lingkup riwayat per browser; aplikasi ini tidak mengklaim memiliki akun/login atau perlindungan multi-pengguna. UI menjelaskan konteks ini secara ringan.
-- Riwayat, pencarian judul/isi, buka ulang, rename, hapus, pilihan mode, kirim/stop/regenerate, salin/umpan balik, dan unggah file diimplementasikan sebagai alur nyata.
-- Markdown respons dirender lewat renderer kecil yang meng-escape HTML, mencakup paragraf, judul, daftar, tautan aman, kode inline dan fenced code block.
-- Rute halaman tunggal `/`; `/manus-routes.json` mendeklarasikan rute UI. Server mendengarkan `0.0.0.0:3000` dan memakai `PORT` bila disediakan.
+- Aplikasi ringan dengan Node.js HTTP server, HTML/CSS/JavaScript di `public/`, tanpa framework UI. `server.js` menyediakan aset statis dan API; `mysql2` menghubungkan `DATABASE_URL`; skema percakapan/pesan tetap idempoten dan tidak destruktif.
+- LLM chat tetap dipanggil hanya dari server melalui `$MANUS_API_URL/v1/chat/completions` dengan `$MANUS_API_KEY`; percakapan sebelumnya menjadi konteks dan respons mengalir melalui SSE.
+- Login memakai Manus OAuth, dengan nonce satu kali pada flow login. Server menukar kode OAuth dan memeriksa email identitas terhadap allowlist pemilik `NALARAI_OWNER_EMAIL`. Token sesi HS256 diverifikasi menggunakan `MANUS_JWT_SECRET`, `appId` dan kedaluwarsa; sesi memakai cookie `webdev_app_session` dengan `SameSite=None; Secure` untuk Preview HTTPS. Semua endpoint percakapan, lampiran, umpan balik, dan Binance mewajibkan sesi pemilik yang valid. ID pemilik di database diturunkan secara deterministik dari openId yang di-hash; `ownerId` dari browser tidak lagi dipercaya.
+- Identitas allowlist menyimpan hash HMAC openId saja pada tabel tambahan satu baris. Riwayat guest lama tidak dihapus; riwayat baru terpisah pada identitas pemilik.
+- Kunci Binance dan email pemilik hanya dibaca dari project secrets saat server berjalan. Kunci Binance yang didukung untuk versi pertama adalah API key Ed25519 dan private key PEM Ed25519. Tidak ada kunci atau signature yang masuk ke browser, basis data, chat AI, penyimpanan berkas, atau log.
+- Sinkron akun terjadi hanya setelah tindakan pemilik dan memakai endpoint Binance Spot `GET /api/v3/account` bertipe `USER_DATA`. Analisis harga memakai endpoint publik Binance Spot `GET /api/v3/ticker/price` dan `GET /api/v3/klines`. Aplikasi tidak memanggil endpoint transaksi, dompet, Futures, atau Margin dan tidak membuat pemantau berkala.
+- Saldo hanya diproses sesaat di server dan browser; tidak disimpan dalam database, riwayat chat, atau log. Analisis Nalar Spot versi awal dihitung deterministik di server, bukan dikirim ke layanan LLM bersama data keuangan pribadi.
+- Cakupan V1 hanya aset Spot dengan pasangan langsung `USDT` dan posisi long. Saldo free dan locked dibaca. Harga rata-rata masuk dan batas kerugian per posisi harus dimasukkan pemilik; saldo akun tidak cukup untuk menyimpulkan harga masuk.
+- Stop-loss berupa tiga skenario berbasis ATR(14) pada timeframe yang dipilih (1h, 4h, atau 1d), dengan kelipatan 1.5x, 2x, dan 3x. Tiap skenario menampilkan sumber Binance, waktu data/penutupan candle, level usulan, jarak terhadap harga kini, dan estimasi kerugian untuk saldo terbaca. Nilai yang melampaui anggaran risiko ditandai; sistem tidak menyesuaikan posisi atau mengeksekusi order. Jika aset/pasangan, saldo, candle lengkap, harga masuk, atau batas risiko tidak tersedia, Nalar menahan rekomendasi angka dan menjelaskan data yang kurang.
+- Analisis bersumber dari satu venue, Binance Spot, sehingga diberi label `single-source` dan bukan jaminan atau rekomendasi pasti. Pengguna meninjau sendiri tingkat risiko dan melakukan transaksi secara mandiri di luar Nalar jika memilih.
+- Integrasi file storage dan alur lampiran PDF/gambar pada chat tetap dipertahankan.
 
 ## Struktur proyek
-- `public/index.html` — kerangka semantik halaman asisten, drawer, area chat, composer dan dialog ringan.
-- `public/styles.css` — sistem visual responsif, fokus keyboard, drawer seluler dan status interaksi.
-- `public/app.js` — state UI, panggilan API, streaming SSE, pencarian, markdown aman, upload dan pengelolaan percakapan.
-- `public/manus-routes.json` — daftar rute halaman publik.
-- `server.js` — server HTTP, endpoint chat/riwayat/upload, integrasi LLM/storage dan akses database.
-- `db/schema.sql` — dokumentasi skema tabel tambahan yang idempoten.
-- `package.json` — dependensi Node dan skrip start.
+- `public/index.html` — kerangka semantik chat, tampilan login, navigasi, ruang analisis Spot, dan penjelasan privasi.
+- `public/styles.css` — sistem visual responsif, fokus keyboard, drawer seluler, login, dashboard akun, dan status interaksi.
+- `public/auth.js` — alur Manus OAuth browser, pembaruan sesi pemilik, token CSRF, dan keluar.
+- `public/app.js` — state UI dan pemanggilan chat/riwayat hanya setelah sesi terverifikasi.
+- `public/spot.js` — sinkronisasi manual saldo, panel saldo sementara, input risiko, dan tampilan skenario stop-loss.
+- `public/manus-routes.json` — deklarasi rute UI satu halaman.
+- `server.js` — server HTTP, endpoint chat/riwayat/upload, pemeriksaan sesi dan CSRF, serta routing API.
+- `lib/auth.js` — verifikasi Manus OAuth, allowlist pemilik, cookie sesi HS256, dan ownership hash.
+- `lib/binance.js` — penandatanganan permintaan Spot baca-saja, sinkronisasi saldo, serta validasi freshness.
+- `lib/spot-analysis.js` — kalkulasi desimal ATR(14) dan skenario risiko.
+- `db/schema.sql` — skema percakapan dan hash identitas pemilik yang idempoten.
+- `docs/binance-readonly.md` — rujukan resmi Binance dan batas endpoint integrasi.
+- `test/spot-analysis.test.js` — pengujian kalkulasi risiko tanpa akses akun.
+- `package.json` — dependensi Node, skrip start, dan test.
 
 ## Asumsi dan batasan
-- Bahasa UI utama Indonesia. Respons mengikuti bahasa pengguna, dengan bahasa Indonesia sebagai default.
-- Mode chat yang terlihat adalah gaya instruksi; model aktual mengikuti default model layanan Manus, tanpa mengasumsikan daftar/model tertentu.
-- Dukungan unggah awal dibatasi ke PDF dan gambar PNG/JPEG/WebP, maksimal 10 MB per berkas. Dukungan file yang tidak tercakup oleh model tidak akan dijanjikan.
-- Kredensial layanan dan MySQL tersedia saat runtime melalui environment proyek. Layanan LLM dapat memakai kredit proyek.
-- Penyimpanan riwayat berlaku untuk ID tamu pada browser yang sama dan bukan autentikasi akun.
-- Tidak menerbitkan situs ke publik kecuali diminta terpisah; tugas ini menyiapkan aplikasi di Preview proyek.
+- Bahasa UI utama Indonesia; respons chat mengikuti bahasa pengguna, dengan bahasa Indonesia sebagai default.
+- Mode chat Seimbang/Ringkas/Kreatif mengubah instruksi gaya, bukan mengklaim model berbeda.
+- Mode analisis Binance hanya Spot, long, pasangan USDT langsung, analisis manual saat pemilik menekan tombol; tidak mencakup Futures, margin, pemantauan otomatis, paper trading, atau eksekusi order.
+- Harga masuk dan anggaran risiko diisi pemilik untuk setiap analisis dan tidak dipersistenkan. Jika nilai kritis hilang atau data stale/gagal, sistem tidak mengarang level.
+- API key harus disetel oleh pengguna agar hanya memiliki izin baca data akun, tanpa izin trade, withdraw, margin, atau futures. Aplikasi tetap hanya memakai GET.
+- Kredensial Binance belum tersedia di konfigurasi saat implementasi dilanjutkan; panel harus menampilkan status belum dikonfigurasi dan menahan sinkronisasi sampai secrets proyek disetel.
+- Pengguna memasukkan email pemilik, API key, dan private key hanya melalui input rahasia terproteksi; jangan meminta nilai-nilainya di chat. Kredensial dev tidak otomatis berlaku pada produksi.
+- Hasil harga/risiko adalah alat bantu analitis satu sumber; bukan jaminan, nasihat keuangan pasti, atau instruksi order.
+- Tidak menerbitkan situs ke publik kecuali diminta terpisah; perubahan disiapkan untuk Preview proyek.

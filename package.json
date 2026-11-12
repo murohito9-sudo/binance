@@ -1,15 +1,18 @@
 {
   "name": "nalarai",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "private": true,
-  "description": "Asisten AI percakapan berbahasa Indonesia",
+  "packageManager": "npm@10.9.9",
+  "description": "Asisten AI percakapan dan analisis Spot baca-saja berbahasa Indonesia",
   "scripts": {
-    "start": "node server.js"
+    "start": "node server.js",
+    "test": "node --test"
   },
   "engines": {
-    "node": ">=20"
+    "node": ">=20.0.0"
   },
   "dependencies": {
+    "decimal.js": "10.5.0",
     "mysql2": "^3.14.1"
   }
 }

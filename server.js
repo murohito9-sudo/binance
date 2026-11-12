@@ -4,6 +4,8 @@ const path = require("node:path");
 const crypto = require("node:crypto");
 const { URL } = require("node:url");
 const mysql = require("mysql2/promise");
+const ownerAuth = require("./lib/auth");
+const binance = require("./lib/binance");
 
 const ROOT = __dirname;
 const PUBLIC_DIR = path.join(ROOT, "public");
@@ -112,15 +114,6 @@ async function readJson(req, maxBytes = 1024 * 1024) {
   }
 }
 
-function validateOwner(ownerId) {
-  if (!UUID_RE.test(String(ownerId || "")))
-    throw Object.assign(
-      new Error("ID sesi tidak valid. Muat ulang halaman dan coba lagi."),
-      { status: 400 },
-    );
-  return ownerId;
-}
-
 function validateMode(mode) {
   return MODES.has(mode) ? mode : "balanced";
 }
@@ -169,6 +162,11 @@ async function initDatabase() {
     INDEX messages_conversation_seq (conversation_id, seq),
     CONSTRAINT messages_conversation_fk FOREIGN KEY (conversation_id)
       REFERENCES conversations (id) ON DELETE CASCADE
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`);
+  await pool.query(`CREATE TABLE IF NOT EXISTS owner_identity (
+    id TINYINT UNSIGNED NOT NULL PRIMARY KEY,
+    subject_hash BINARY(32) NOT NULL,
+    created_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3)
   ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`);
 }
 
@@ -256,8 +254,7 @@ function writeSse(res, event) {
   res.write(`data: ${JSON.stringify(event)}\n\n`);
 }
 
-async function listConversations(url, res) {
-  const ownerId = validateOwner(url.searchParams.get("ownerId"));
+async function listConversations(url, res, ownerId) {
   const q = (url.searchParams.get("q") || "").trim().slice(0, 160);
   let rows;
   if (q) {
@@ -279,8 +276,7 @@ async function listConversations(url, res) {
   sendJson(res, 200, { conversations: rows });
 }
 
-async function getMessages(url, res, id) {
-  const ownerId = validateOwner(url.searchParams.get("ownerId"));
+async function getMessages(url, res, id, ownerId) {
   const convo = await findConversation(id, ownerId);
   if (!convo)
     return sendJson(res, 404, { error: "Percakapan tidak ditemukan." });
@@ -296,9 +292,8 @@ async function getMessages(url, res, id) {
   });
 }
 
-async function createConversationRoute(req, res) {
+async function createConversationRoute(req, res, ownerId) {
   const body = await readJson(req);
-  const ownerId = validateOwner(body.ownerId);
   const conversation = await createConversation(
     ownerId,
     body.title || "Percakapan baru",
@@ -307,9 +302,8 @@ async function createConversationRoute(req, res) {
   sendJson(res, 201, { conversation });
 }
 
-async function updateConversation(req, res, id) {
+async function updateConversation(req, res, id, ownerId) {
   const body = await readJson(req);
-  const ownerId = validateOwner(body.ownerId);
   const conversation = await findConversation(id, ownerId);
   if (!conversation)
     return sendJson(res, 404, { error: "Percakapan tidak ditemukan." });
@@ -337,9 +331,7 @@ async function updateConversation(req, res, id) {
   sendJson(res, 200, { conversation: rows[0] });
 }
 
-async function deleteConversation(req, res, id) {
-  const url = new URL(req.url, "http://localhost");
-  const ownerId = validateOwner(url.searchParams.get("ownerId"));
+async function deleteConversation(req, res, id, ownerId) {
   const connection = await pool.getConnection();
   try {
     await connection.beginTransaction();
@@ -368,8 +360,7 @@ async function deleteConversation(req, res, id) {
   }
 }
 
-async function uploadAttachment(req, res, url) {
-  const ownerId = validateOwner(url.searchParams.get("ownerId"));
+async function uploadAttachment(req, res, url, ownerId) {
   const conversationId = url.searchParams.get("conversationId");
   if (!UUID_RE.test(String(conversationId || "")))
     return sendJson(res, 400, { error: "Percakapan tidak valid." });
@@ -452,9 +443,8 @@ async function validateChatAttachments(input, ownerId, conversationId) {
   return safe;
 }
 
-async function writeModelStream(req, res) {
+async function writeModelStream(req, res, ownerId) {
   const body = await readJson(req, 2 * 1024 * 1024);
-  const ownerId = validateOwner(body.ownerId);
   const apiBase = process.env.MANUS_API_URL;
   if (!apiBase || !process.env.MANUS_API_KEY)
     return sendJson(res, 503, {
@@ -721,9 +711,8 @@ async function writeModelStream(req, res) {
   }
 }
 
-async function feedback(req, res) {
+async function feedback(req, res, ownerId) {
   const body = await readJson(req);
-  const ownerId = validateOwner(body.ownerId);
   const messageId = String(body.messageId || "");
   const value = Number(body.value);
   if (!UUID_RE.test(messageId) || ![-1, 1].includes(value))
@@ -775,35 +764,95 @@ async function serveStatic(req, res, pathname) {
   fs.createReadStream(filePath).pipe(res);
 }
 
+async function authSession(req, res) {
+  try {
+    const owner = await ownerAuth.findOwner(req, pool);
+    return sendJson(res, 200, {
+      authenticated: true,
+      loginAvailable: ownerAuth.loginAvailable(),
+      csrfToken: owner.claims.csrf,
+    });
+  } catch (error) {
+    if (error.status === 401 || error.status === 403)
+      return sendJson(res, 200, {
+        authenticated: false,
+        loginAvailable: ownerAuth.loginAvailable(),
+      });
+    throw error;
+  }
+}
+
 async function route(req, res) {
   const url = new URL(req.url, "http://localhost");
   const pathname = url.pathname;
   if (req.method === "GET" && pathname === "/api/health")
     return sendJson(res, 200, { ok: true });
+  if (req.method === "GET" && pathname === "/api/auth/session")
+    return authSession(req, res);
+  if (req.method === "POST" && pathname === "/api/auth/start") {
+    const body = await readJson(req, 8192);
+    const start = ownerAuth.createOAuthStart(body.origin, req.headers.origin);
+    res.setHeader("Set-Cookie", start.cookie);
+    return sendJson(res, 200, { url: start.url });
+  }
+  if (req.method === "POST" && pathname === "/api/auth/callback") {
+    const body = await readJson(req, 16 * 1024);
+    const session = await ownerAuth.completeOAuth({ body, req, pool });
+    res.setHeader("Set-Cookie", [session.cookie, session.clearNonce]);
+    return sendJson(res, 200, {
+      authenticated: true,
+      csrfToken: session.csrfToken,
+    });
+  }
+  if (req.method === "GET" || req.method === "HEAD") {
+    if (!pathname.startsWith("/api/")) return serveStatic(req, res, pathname);
+  }
+
+  if (!pathname.startsWith("/api/"))
+    return sendJson(res, 404, { error: "Endpoint tidak ditemukan." });
+
+  const owner = await ownerAuth.findOwner(req, pool);
+  if (req.method !== "GET" && req.method !== "HEAD")
+    ownerAuth.requireCsrf(req, owner.claims);
+  const ownerId = owner.ownerId;
+
+  if (req.method === "POST" && pathname === "/api/auth/logout") {
+    res.setHeader("Set-Cookie", ownerAuth.logoutCookie(req));
+    return sendJson(res, 200, { ok: true });
+  }
   if (req.method === "GET" && pathname === "/api/conversations")
-    return listConversations(url, res);
+    return listConversations(url, res, ownerId);
   if (req.method === "POST" && pathname === "/api/conversations")
-    return createConversationRoute(req, res);
+    return createConversationRoute(req, res, ownerId);
   if (req.method === "POST" && pathname === "/api/chat")
-    return writeModelStream(req, res);
+    return writeModelStream(req, res, ownerId);
   if (req.method === "POST" && pathname === "/api/uploads")
-    return uploadAttachment(req, res, url);
+    return uploadAttachment(req, res, url, ownerId);
   if (req.method === "POST" && pathname === "/api/feedback")
-    return feedback(req, res);
+    return feedback(req, res, ownerId);
+  if (req.method === "GET" && pathname === "/api/binance/status")
+    return sendJson(res, 200, { configured: binance.isConfigured() });
+  if (req.method === "POST" && pathname === "/api/binance/sync")
+    return sendJson(res, 200, await binance.syncAccount());
+  if (req.method === "POST" && pathname === "/api/binance/analyze")
+    return sendJson(
+      res,
+      200,
+      await binance.analyzeStopLoss(await readJson(req, 8192)),
+    );
+
   const messagesMatch = pathname.match(
     /^\/api\/conversations\/([0-9a-f-]{36})\/messages$/i,
   );
   if (req.method === "GET" && messagesMatch)
-    return getMessages(url, res, messagesMatch[1]);
+    return getMessages(url, res, messagesMatch[1], ownerId);
   const conversationMatch = pathname.match(
     /^\/api\/conversations\/([0-9a-f-]{36})$/i,
   );
   if (conversationMatch && req.method === "PATCH")
-    return updateConversation(req, res, conversationMatch[1]);
+    return updateConversation(req, res, conversationMatch[1], ownerId);
   if (conversationMatch && req.method === "DELETE")
-    return deleteConversation(req, res, conversationMatch[1]);
-  if (req.method === "GET" || req.method === "HEAD")
-    return serveStatic(req, res, pathname);
+    return deleteConversation(req, res, conversationMatch[1], ownerId);
   return sendJson(res, 404, { error: "Endpoint tidak ditemukan." });
 }
 
@@ -822,7 +871,7 @@ const server = http.createServer(async (req, res) => {
       return;
     }
     const status = Number(error.status) || 500;
-    if (status >= 500) console.error("[nalar] request failed:", error.message);
+    if (status >= 500) console.error("[nalar] request failed", status);
     sendJson(res, status, {
       error:
         status === 500
@@ -842,7 +891,7 @@ initDatabase()
     );
   })
   .catch((error) => {
-    console.error("[nalar] Database initialization failed:", error.message);
+    console.error("[nalar] Database initialization failed");
     process.exitCode = 1;
   });
 

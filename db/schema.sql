@@ -21,3 +21,10 @@ CREATE TABLE IF NOT EXISTS messages (
   CONSTRAINT messages_conversation_fk FOREIGN KEY (conversation_id)
     REFERENCES conversations (id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- Stores only an HMAC of the single allowed Manus identity, never its email or raw openId.
+CREATE TABLE IF NOT EXISTS owner_identity (
+  id TINYINT UNSIGNED NOT NULL PRIMARY KEY,
+  subject_hash BINARY(32) NOT NULL,
+  created_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
