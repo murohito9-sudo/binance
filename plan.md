@@ -1,9 +1,11 @@
 # Rencana Nalar AI
 
 ## Tujuan
+
 Menyempurnakan aplikasi lampiran yang semula berupa dashboard kripto/J.A.R.V.I.S. menjadi aplikasi asisten AI percakapan yang familier, ringkas, dan siap dipakai, lalu menambahkan ruang analisis Binance Spot baca-saja untuk pemilik. Hanya elemen sumber yang mendukung pengalaman asisten dipertahankan; transaksi nyata tidak pernah dikirim.
 
 ## Arah visual
+
 Alternatif gaya yang dipertimbangkan: editorial Swiss yang tenang (0,061); neo-brutalisme hangat (0,038); terminal sci-fi sinematik (0,012). Dipilih editorial Swiss yang tenang agar fokus percakapan lebih utama daripada dekorasi.
 
 - **Gerakan desain:** editorial Swiss kontemporer dengan disiplin tipografi, ruang napas luas, dan kontrol percakapan yang familiar.
@@ -16,10 +18,11 @@ Alternatif gaya yang dipertimbangkan: editorial Swiss yang tenang (0,061); neo-b
 - **Tipografi:** `DM Sans` untuk antarmuka dan `Manrope` untuk wordmark/judul, dengan `ui-monospace` untuk kode; isi chat memakai line-height lega.
 - **Esensi merek:** asisten AI berbahasa Indonesia yang membantu berpikir dan menyelesaikan pekerjaan tanpa mengganggu; jernih, ramah, tangkas.
 - **Suara merek:** langsung, suportif, tidak sok tahu. Contoh: “Apa yang ingin kamu selesaikan hari ini?” dan “Boleh, kita uraikan langkah demi langkah.”
-- **Wordmark & logo:** wordmark “Nalar AI” dengan tanda N geometris sederhana; gunakan SVG inline/CSS, bukan gambar stok.
+- **Wordmark & logo:** gunakan lockup NALAR biru-perak dari gambar yang diberikan pemilik; mark tampil pada login, sidebar, mobile, dan ikon situs. Jangan mengganti atau merekayasa ulang karya pengguna.
 - **Warna merek:** teal-biru gelap `#167C78` sebagai aksen khas.
 
 ## Arsitektur implementasi
+
 - Aplikasi ringan dengan Node.js HTTP server, HTML/CSS/JavaScript di `public/`, tanpa framework UI. `server.js` menyediakan aset statis dan API; `mysql2` menghubungkan `DATABASE_URL`; skema percakapan/pesan tetap idempoten dan tidak destruktif.
 - LLM chat tetap dipanggil hanya dari server melalui `$MANUS_API_URL/v1/chat/completions` dengan `$MANUS_API_KEY`; percakapan sebelumnya menjadi konteks dan respons mengalir melalui SSE.
 - Login memakai Manus OAuth, dengan nonce satu kali pada flow login. Server menukar kode OAuth dan memeriksa email identitas terhadap allowlist pemilik `NALARAI_OWNER_EMAIL`. Token sesi HS256 diverifikasi menggunakan `MANUS_JWT_SECRET`, `appId` dan kedaluwarsa; sesi memakai cookie `webdev_app_session` dengan `SameSite=None; Secure` untuk Preview HTTPS. Semua endpoint percakapan, lampiran, umpan balik, dan Binance mewajibkan sesi pemilik yang valid. ID pemilik di database diturunkan secara deterministik dari openId yang di-hash; `ownerId` dari browser tidak lagi dipercaya.
@@ -30,27 +33,31 @@ Alternatif gaya yang dipertimbangkan: editorial Swiss yang tenang (0,061); neo-b
 - Saldo hanya diproses sesaat di server dan browser; tidak disimpan dalam database, riwayat chat, atau log. Analisis Nalar Spot versi awal dihitung deterministik di server, bukan dikirim ke layanan LLM bersama data keuangan pribadi.
 - Cakupan V1 hanya aset Spot dengan pasangan langsung `USDT` dan posisi long. Saldo free dan locked dibaca. Harga rata-rata masuk dan batas kerugian per posisi harus dimasukkan pemilik; saldo akun tidak cukup untuk menyimpulkan harga masuk.
 - Stop-loss berupa tiga skenario berbasis ATR(14) pada timeframe yang dipilih (1h, 4h, atau 1d), dengan kelipatan 1.5x, 2x, dan 3x. Tiap skenario menampilkan sumber Binance, waktu data/penutupan candle, level usulan, jarak terhadap harga kini, dan estimasi kerugian untuk saldo terbaca. Nilai yang melampaui anggaran risiko ditandai; sistem tidak menyesuaikan posisi atau mengeksekusi order. Jika aset/pasangan, saldo, candle lengkap, harga masuk, atau batas risiko tidak tersedia, Nalar menahan rekomendasi angka dan menjelaskan data yang kurang.
+- Indikator tambahan memakai sampai 100 candle Binance Spot yang sudah ditutup pada timeframe terpilih: EMA(20/50), RSI(14), MACD(12,26,9), dan Bollinger Bands(20,2). UI menampilkan nilai, timestamp penutupan candle, bias indikator bullish/bearish/campuran, dan penjelasan sederhana tanpa menyebutnya sebagai perintah buy/sell.
+- Skenario ATR menampilkan juga ukuran posisi teoritis maksimum dari anggaran risiko dibagi selisih harga masuk dan stop, jika stop berada di bawah entry. Estimasi dibulatkan dengan Decimal dan diberi catatan bahwa fee, spread, slippage, celah harga, aturan langkah/minimum Binance, dan toleransi pribadi belum termasuk.
 - Analisis bersumber dari satu venue, Binance Spot, sehingga diberi label `single-source` dan bukan jaminan atau rekomendasi pasti. Pengguna meninjau sendiri tingkat risiko dan melakukan transaksi secara mandiri di luar Nalar jika memilih.
 - Integrasi file storage dan alur lampiran PDF/gambar pada chat tetap dipertahankan.
 
 ## Struktur proyek
+
 - `public/index.html` — kerangka semantik chat, tampilan login, navigasi, ruang analisis Spot, dan penjelasan privasi.
 - `public/styles.css` — sistem visual responsif, fokus keyboard, drawer seluler, login, dashboard akun, dan status interaksi.
 - `public/auth.js` — alur Manus OAuth browser, pembaruan sesi pemilik, token CSRF, dan keluar.
 - `public/app.js` — state UI dan pemanggilan chat/riwayat hanya setelah sesi terverifikasi.
-- `public/spot.js` — wizard koneksi, pemeriksaan status secrets, sinkronisasi manual saldo, panel saldo sementara, input risiko, dan tampilan skenario stop-loss.
+- `public/spot.js` — wizard koneksi, pemeriksaan status secrets, sinkronisasi manual saldo, panel saldo sementara, input risiko, indikator teknikal, dan tampilan skenario stop-loss/ukuran posisi teoritis.
 - `public/manus-routes.json` — deklarasi rute UI satu halaman.
 - `server.js` — server HTTP, endpoint chat/riwayat/upload, pemeriksaan sesi dan CSRF, serta routing API.
 - `lib/auth.js` — verifikasi Manus OAuth, allowlist pemilik, cookie sesi HS256, dan ownership hash.
 - `lib/binance.js` — pemeriksaan secret/format Ed25519 tanpa mengembalikan nilai, penandatanganan permintaan Spot baca-saja, sinkronisasi saldo, serta validasi freshness.
-- `lib/spot-analysis.js` — kalkulasi desimal ATR(14) dan skenario risiko.
+- `lib/spot-analysis.js` — kalkulasi desimal ATR(14), ukuran risiko, EMA, RSI, MACD, dan Bollinger Bands.
 - `db/schema.sql` — skema percakapan dan hash identitas pemilik yang idempoten.
 - `docs/binance-readonly.md` — rujukan resmi Binance dan batas endpoint integrasi.
 - `test/binance-config.test.js` — pengujian status secret dan validasi tipe key tanpa akses jaringan atau akun.
-- `test/spot-analysis.test.js` — pengujian kalkulasi risiko tanpa akses akun.
+- `test/spot-analysis.test.js` — pengujian kalkulasi indikator dan risiko tanpa akses akun.
 - `package.json` — dependensi Node, skrip start, dan test.
 
 ## Asumsi dan batasan
+
 - Bahasa UI utama Indonesia; respons chat mengikuti bahasa pengguna, dengan bahasa Indonesia sebagai default.
 - Mode chat Seimbang/Ringkas/Kreatif mengubah instruksi gaya, bukan mengklaim model berbeda.
 - Mode analisis Binance hanya Spot, long, pasangan USDT langsung, analisis manual saat pemilik menekan tombol; tidak mencakup Futures, margin, pemantauan otomatis, paper trading, atau eksekusi order.

@@ -11,7 +11,8 @@
     <title>Nalar AI — Teman berpikir setiap hari</title>
     <link
       rel="icon"
-      href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='20' fill='%23167c78'/%3E%3Cpath d='M19 44V20l26 24V20' fill='none' stroke='white' stroke-width='6' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E"
+      type="image/png"
+      href="/manus-storage/nalar-logo-icon_80c35396.png"
     />
     <link rel="stylesheet" href="/styles.css" />
     <script src="/auth.js" defer></script>
@@ -22,9 +23,13 @@
     <a class="skip-link" href="#mainContent">Lewati ke percakapan</a>
     <section class="login-gate" id="loginGate" aria-labelledby="loginHeading">
       <div class="login-card">
-        <span class="brand-mark large" aria-hidden="true"
-          ><svg viewBox="0 0 32 32"><path d="M8 23V9l16 14V9" /></svg
-        ></span>
+        <img
+          class="login-lockup"
+          src="/manus-storage/nalar-logo-lockup_87807674.png"
+          alt="Logo NALAR — Build Innovate Evolve"
+          width="930"
+          height="440"
+        />
         <p class="eyebrow">RUANG PEMILIK</p>
         <h1 id="loginHeading">Masuk ke Nalar</h1>
         <p>
@@ -51,8 +56,12 @@
         <div class="sidebar-top">
           <a class="brand" href="/" aria-label="Nalar AI, beranda">
             <span class="brand-mark" aria-hidden="true"
-              ><svg viewBox="0 0 32 32"><path d="M8 23V9l16 14V9" /></svg
-            ></span>
+              ><img
+                src="/manus-storage/nalar-logo-mark_75bbdec6.png"
+                alt=""
+                width="375"
+                height="442"
+            /></span>
             <span class="brand-name">nalar<span>.</span></span>
           </a>
           <button
@@ -155,8 +164,11 @@
             </button>
             <div class="mobile-brand">
               <span class="brand-mark small" aria-hidden="true"
-                ><svg viewBox="0 0 32 32">
-                  <path d="M8 23V9l16 14V9" /></svg></span
+                ><img
+                  src="/manus-storage/nalar-logo-mark_75bbdec6.png"
+                  alt=""
+                  width="375"
+                  height="442" /></span
               ><span class="brand-name">nalar<span>.</span></span>
             </div>
             <span class="conversation-title" id="conversationTitle"
@@ -213,7 +225,7 @@
                 <h1 id="spotHeading">Binance Spot</h1>
                 <p class="spot-intro">
                   Baca saldo saat diminta, lalu hitung skenario ATR untuk posisi
-                  Spot long. Nalar tidak mengirim order.
+                  Spot long dan indikator teknikal. Nalar tidak mengirim order.
                 </p>
               </div>
               <button class="secondary-button" id="spotBack" type="button">
@@ -332,11 +344,11 @@
               <div class="spot-balances" id="spotBalances"></div>
             </section>
             <form class="spot-card spot-form" id="spotAnalysisForm">
-              <h2>Usulan stop-loss berbasis ATR(14)</h2>
+              <h2>Indikator teknikal &amp; skenario risiko</h2>
               <p>
-                Isi harga masuk rata-rata dan batas kerugian yang kamu tentukan
-                sendiri. Ini hanya tiga skenario hitung, bukan order atau
-                jaminan.
+                Tinjau EMA, RSI, MACD, Bollinger, dan volume pada candle yang
+                selesai. Isi harga masuk rata-rata serta batas risiko pilihanmu
+                untuk melihat tiga skenario stop dan ukuran posisi teoritis.
               </p>
               <div class="spot-fields">
                 <label for="spotAsset"
@@ -377,7 +389,8 @@
               <p class="spot-smallprint">
                 Jumlah aset dihitung ulang dari Binance saat analisis.
                 Perhitungan tidak memasukkan fee, spread, gap, slippage, pajak,
-                atau perubahan harga setelah waktu pengambilan data.
+                aturan minimum/step Binance, atau perubahan harga setelah data
+                diambil. Ukuran posisi teoritis bukan order.
               </p>
               <button class="primary-button" type="submit">
                 Hitung skenario

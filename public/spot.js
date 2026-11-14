@@ -213,6 +213,92 @@
     const summary = document.createElement("p");
     summary.className = "spot-summary";
     summary.textContent = `Harga saat diambil ${data.currentPrice} USDT · ATR(14) ${data.atr14} · jumlah saldo ${data.positionQuantity} ${data.asset} · harga masuk ${data.entryPrice} USDT · batas risiko ${data.riskBudgetUsdt} USDT.`;
+    const indicators = data.indicators;
+    const indicatorSection = document.createElement("section");
+    indicatorSection.className = "indicator-section";
+    indicatorSection.setAttribute("aria-label", "Indikator teknikal");
+    const indicatorHeading = document.createElement("h4");
+    indicatorHeading.textContent = "Indikator teknikal";
+    const indicatorMeta = document.createElement("p");
+    indicatorMeta.className = "spot-meta";
+    indicatorMeta.textContent = `Dihitung dari ${indicators.sampleSize} candle lengkap. Close terakhir ${indicators.lastClose} USDT pada ${new Date(data.candleCloseTime).toLocaleString("id-ID")}. Ini ringkasan indikator, bukan sinyal order.`;
+    const indicatorGrid = document.createElement("div");
+    indicatorGrid.className = "indicator-grid";
+    const addIndicator = (name, value, detail, tone = "neutral") => {
+      const card = document.createElement("article");
+      card.className = "indicator-card";
+      card.dataset.tone = tone;
+      const label = document.createElement("span");
+      label.className = "indicator-label";
+      label.textContent = name;
+      const metric = document.createElement("strong");
+      metric.className = "indicator-value";
+      metric.textContent = value;
+      const explanation = document.createElement("p");
+      explanation.textContent = detail;
+      card.append(label, metric, explanation);
+      indicatorGrid.append(card);
+    };
+    const bias = indicators.bias;
+    const biasLabel =
+      bias === "bullish"
+        ? "Bullish"
+        : bias === "bearish"
+          ? "Bearish"
+          : "Campuran / netral";
+    const biasTone =
+      bias === "bullish"
+        ? "positive"
+        : bias === "bearish"
+          ? "negative"
+          : "neutral";
+    const biasDetail =
+      bias === "bullish"
+        ? `${indicators.votes.bullish}/4 kondisi mendukung kecenderungan bullish.`
+        : bias === "bearish"
+          ? `${indicators.votes.bearish}/4 kondisi mendukung kecenderungan bearish.`
+          : `${indicators.votes.bullish}/4 kondisi bullish dan ${indicators.votes.bearish}/4 bearish; sinyal belum selaras.`;
+    addIndicator(
+      "Bias teknikal",
+      biasLabel,
+      `${biasDetail} Bias bukan instruksi membeli, menjual, atau menahan aset.`,
+      biasTone,
+    );
+    const ema20Above50 = Number(indicators.ema20) > Number(indicators.ema50);
+    addIndicator(
+      "EMA (20 / 50)",
+      `${indicators.ema20} / ${indicators.ema50}`,
+      `Close ${Number(indicators.lastClose) > Number(indicators.ema20) ? "di atas" : "di bawah"} EMA20; EMA20 ${ema20Above50 ? "di atas" : "di bawah atau sama dengan"} EMA50.`,
+    );
+    const rsi = Number(indicators.rsi14);
+    const rsiContext =
+      rsi >= 70
+        ? "Zona tinggi (≥70); bukan bukti harga pasti berbalik."
+        : rsi <= 30
+          ? "Zona rendah (≤30); bukan bukti harga pasti berbalik."
+          : "Zona tengah; periksa bersama indikator dan konteks lain.";
+    addIndicator("RSI (14)", indicators.rsi14, rsiContext);
+    addIndicator(
+      "MACD (12 / 26 / 9)",
+      `${indicators.macd.value} · signal ${indicators.macd.signal}`,
+      `Histogram ${indicators.macd.histogram}; MACD ${indicators.macd.aboveSignal ? "di atas" : "di bawah atau sama dengan"} garis signal.`,
+      indicators.macd.aboveSignal ? "positive" : "neutral",
+    );
+    addIndicator(
+      "Bollinger Bands (20, 2)",
+      `${indicators.bollinger.lower} – ${indicators.bollinger.upper}`,
+      `Band bawah ${indicators.bollinger.lower} · tengah ${indicators.bollinger.middle} · atas ${indicators.bollinger.upper} USDT.`,
+    );
+    addIndicator(
+      "Volume candle / rata-rata 20",
+      indicators.volume?.ratio20 === null || !indicators.volume
+        ? "Tidak tersedia"
+        : `${indicators.volume.ratio20}×`,
+      indicators.volume
+        ? `Volume candle terakhir ${indicators.volume.last}; rata-rata 20 candle ${indicators.volume.average20}.`
+        : "Volume candle tidak tersedia; indikator lain tetap memakai candle yang sudah ditutup.",
+    );
+    indicatorSection.append(indicatorHeading, indicatorMeta, indicatorGrid);
     const cards = document.createElement("div");
     cards.className = "scenario-list";
     data.scenarios.forEach((scenario) => {
@@ -225,7 +311,11 @@
         values.textContent =
           "Tidak ditampilkan: level hasil hitung tidak positif; data ini tidak cukup untuk usulan angka.";
       } else {
-        values.textContent = `Level skenario ${scenario.stopPrice} USDT · jarak ${scenario.distancePct}% · estimasi rugi ${scenario.estimatedLossUsdt} USDT${scenario.overRiskBudget ? " · MELEBIHI batas risiko" : " · dalam batas risiko"}${scenario.aboveEntry ? " · level di atas harga masuk; rugi terhadap entry dihitung 0 sebelum biaya" : ""}.`;
+        const theoreticalSize =
+          scenario.maxQuantityForRiskBudget === null
+            ? "Ukuran posisi teoritis tidak dihitung karena level stop berada pada/di atas harga masuk."
+            : `Ukuran teoritis maksimum ${scenario.maxQuantityForRiskBudget} ${data.asset} (notional ${scenario.maxNotionalAtEntryUsdt} USDT, sebelum biaya).`;
+        values.textContent = `Level skenario ${scenario.stopPrice} USDT · jarak ${scenario.distancePct}% · estimasi rugi saldo kini ${scenario.estimatedLossUsdt} USDT${scenario.overRiskBudget ? " · MELEBIHI batas risiko" : " · dalam batas risiko"}${scenario.aboveEntry ? " · level pada/di atas harga masuk; rugi model terhadap entry dihitung 0 sebelum biaya" : ""}. ${theoreticalSize}`;
       }
       card.append(heading, values);
       cards.append(card);
@@ -233,7 +323,7 @@
     const notice = document.createElement("p");
     notice.className = "spot-disclaimer";
     notice.textContent = data.note;
-    result.append(title, metadata, summary, cards, notice);
+    result.append(title, metadata, summary, indicatorSection, cards, notice);
   }
 
   checkButton.addEventListener("click", async () => {
