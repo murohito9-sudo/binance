@@ -29,6 +29,7 @@ Alternatif gaya yang dipertimbangkan: editorial Swiss yang tenang (0,061); neo-b
 - Identitas allowlist menyimpan hash HMAC openId saja pada tabel tambahan satu baris. Riwayat guest lama tidak dihapus; riwayat baru terpisah pada identitas pemilik.
 - Kunci Binance dan email pemilik hanya dibaca dari project secrets saat server berjalan. Kunci Binance yang didukung untuk versi pertama adalah API key Ed25519 dan private key PEM Ed25519. Tidak ada kunci atau signature yang masuk ke browser, basis data, chat AI, penyimpanan berkas, atau log.
 - Sinkron akun terjadi hanya setelah tindakan pemilik dan memakai endpoint Binance Spot `GET /api/v3/account` bertipe `USER_DATA`. Analisis harga memakai endpoint publik Binance Spot `GET /api/v3/ticker/price` dan `GET /api/v3/klines`. Aplikasi tidak memanggil endpoint transaksi, dompet, Futures, atau Margin dan tidak membuat pemantau berkala.
+- Publikasi memakai container Node.js, bukan build statis, karena autentikasi, chat LLM, database, dan Binance memerlukan server. `Dockerfile` memasang dependensi dari lockfile, menyalin UI dan modul runtime, lalu menjalankan server pada `PORT` yang disediakan platform (3000 sebagai default); health check publik tanpa autentikasi adalah `GET /api/health`. Rahasia dibaca hanya saat runtime.
 - Klik navigasi Binance membuka wizard berbahasa Indonesia yang menyebut prasyarat API key Ed25519 baca-saja, dua nama secret, lokasi aman untuk menyetelnya, cara memeriksa secret yang belum ada, dan langkah tes koneksi. Halaman tidak meminta nilai kunci; pengguna menyimpannya melalui project Secrets dan memilih Development saat menggunakan Preview (nilai Development tidak otomatis berlaku di Production). Hanya setelah pemeriksaan menunjukkan konfigurasi lengkap, tombol tindakan eksplisit dapat menguji `GET /api/v3/account` dan mengambil saldo; sukses menandai koneksi baca-saja pada sesi tab tersebut, sedangkan kegagalan memberi petunjuk perbaikan tanpa membocorkan credential.
 - Saldo hanya diproses sesaat di server dan browser; tidak disimpan dalam database, riwayat chat, atau log. Analisis Nalar Spot versi awal dihitung deterministik di server, bukan dikirim ke layanan LLM bersama data keuangan pribadi.
 - Cakupan V1 hanya aset Spot dengan pasangan langsung `USDT` dan posisi long. Saldo free dan locked dibaca. Harga rata-rata masuk dan batas kerugian per posisi harus dimasukkan pemilik; saldo akun tidak cukup untuk menyimpulkan harga masuk.
@@ -55,6 +56,7 @@ Alternatif gaya yang dipertimbangkan: editorial Swiss yang tenang (0,061); neo-b
 - `test/binance-config.test.js` — pengujian status secret dan validasi tipe key tanpa akses jaringan atau akun.
 - `test/spot-analysis.test.js` — pengujian kalkulasi indikator dan risiko tanpa akses akun.
 - `package.json` — dependensi Node, skrip start, dan test.
+- `Dockerfile` — instalasi produksi dan entrypoint container; tidak menyertakan secrets atau file build lokal.
 
 ## Asumsi dan batasan
 
