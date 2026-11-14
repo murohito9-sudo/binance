@@ -5,6 +5,8 @@
   const main = $(".main-area");
   const panel = $("#spotPanel");
   const status = $("#spotStatus");
+  const setupFeedback = $("#spotSetupFeedback");
+  const checkButton = $("#checkBinanceSecrets");
   const syncButton = $("#syncBinance");
   const balanceTable = $("#spotBalances");
   const assetSelect = $("#spotAsset");
@@ -14,6 +16,11 @@
     balances: [],
     title: "Percakapan baru",
     synced: false,
+    configured: false,
+    connected: false,
+    missing: [],
+    invalid: [],
+    connectionError: null,
     busy: false,
   };
 
@@ -43,59 +50,104 @@
     return data;
   }
 
-  function showPanel(open) {
-    if (
-      open &&
-      (window.NalarAuth.authenticated === false ||
-        !window.NalarAuth.authenticated)
-    )
-      return;
-    if (open)
-      state.title = $("#conversationTitle").textContent || "Percakapan baru";
-    main.classList.toggle("spot-active", open);
-    panel.hidden = !open;
-    nav.setAttribute("aria-current", open ? "page" : "false");
-    if (open) {
-      $("#appShell").classList.remove("sidebar-open");
-      $("#conversationTitle").textContent = "Analisis Binance Spot";
-      loadStatus();
-      syncButton.focus();
-    } else {
-      $("#conversationTitle").textContent = state.title;
-      $("#promptInput").focus({ preventScroll: true });
-    }
-  }
-
   function setStatus(text, kind = "info") {
     status.textContent = text;
     status.dataset.kind = kind;
   }
 
-  async function loadStatus() {
+  function renderConfiguration(data) {
+    state.configured = data.configured === true;
+    state.missing = Array.isArray(data.missing) ? data.missing : [];
+    state.invalid = Array.isArray(data.invalid) ? data.invalid : [];
+    const missing = state.missing;
+    const invalid = state.invalid;
+    const stepTwo = $("#spotStep2State");
+    const stepThree = $("#spotStep3State");
+
+    if (invalid.length) {
+      stepTwo.textContent = "Format private key perlu diperbaiki";
+      stepTwo.dataset.kind = "warning";
+    } else if (missing.length) {
+      stepTwo.textContent = `Belum lengkap · ${missing.length} secret`;
+      stepTwo.dataset.kind = "warning";
+    } else {
+      stepTwo.textContent = "Kedua secret tersedia";
+      stepTwo.dataset.kind = "good";
+    }
+
+    stepThree.textContent = state.connected
+      ? "Terhubung · sesi tab ini"
+      : state.connectionError
+        ? "Belum terhubung · periksa akses"
+        : state.configured
+          ? "Siap diuji"
+          : "Menunggu konfigurasi";
+    stepThree.dataset.kind = state.connected
+      ? "good"
+      : state.connectionError
+        ? "warning"
+        : state.configured
+          ? "ready"
+          : "muted";
+
+    syncButton.disabled = !state.configured || state.busy;
+    syncButton.textContent = state.connected
+      ? "Sinkronkan saldo lagi"
+      : "Tes koneksi & sinkronkan saldo";
+
+    if (state.connected) {
+      setStatus(
+        "Terhubung ke Binance Spot dengan akses baca-saja pada sesi tab ini. Saldo hanya diperbarui saat kamu menekan tombol sinkronisasi.",
+        "good",
+      );
+      return;
+    }
+    if (invalid.length) {
+      setStatus(
+        `Format ${invalid.join(", ")} tidak valid. Perbaiki private key Ed25519 di Secrets proyek, lalu periksa kembali.`,
+        "warning",
+      );
+      return;
+    }
+    if (missing.length) {
+      setStatus(
+        `Belum siap. Tambahkan ${missing.join(" dan ")} melalui Pengaturan proyek → Secrets, lalu tekan “Periksa konfigurasi”.`,
+        "warning",
+      );
+      return;
+    }
+    setStatus(
+      "Kedua Secrets tersedia dan private key berformat Ed25519. Koneksi Binance belum diuji; tekan tombol tes untuk membaca saldo.",
+      "info",
+    );
+  }
+
+  async function loadStatus(announce = false) {
     try {
       const data = await request("/api/binance/status");
-      if (data.configured) {
-        setStatus(
-          "Kredensial tersedia di server. Sinkronisasi hanya berjalan saat kamu menekan tombol.",
-          "good",
-        );
-        syncButton.disabled = false;
-      } else {
-        setStatus(
-          "Koneksi Binance belum dikonfigurasi. Sinkronisasi dinonaktifkan sampai API key baca-saja dan kunci Ed25519 disimpan sebagai secrets proyek.",
-          "warning",
-        );
-        syncButton.disabled = true;
+      renderConfiguration(data);
+      if (announce) {
+        setupFeedback.textContent = state.configured
+          ? "Semua Secrets ditemukan dan format private key valid. Langkah berikutnya: tekan “Tes koneksi & sinkronkan saldo”."
+          : state.invalid?.length
+            ? `Perbaiki format ${state.invalid.join(", ")} melalui Secrets proyek, lalu periksa kembali.`
+            : `Belum lengkap. Secret yang perlu ditambahkan: ${(data.missing || []).join(", ")}. Nilainya jangan dikirim lewat chat atau dimasukkan ke halaman ini.`;
       }
+      return data;
     } catch (error) {
-      setStatus(error.message, "warning");
+      state.configured = false;
       syncButton.disabled = true;
+      setStatus(error.message, "warning");
+      if (announce) setupFeedback.textContent = error.message;
+      return null;
     }
   }
 
   function renderBalances(data) {
     state.balances = data.balances || [];
     state.synced = true;
+    state.connected = true;
+    state.connectionError = null;
     balanceTable.replaceChildren();
     const head = document.createElement("div");
     head.className = "balance-row balance-head";
@@ -141,10 +193,13 @@
       dateStyle: "medium",
       timeStyle: "medium",
     });
+    renderConfiguration({ configured: true, missing: [], invalid: [] });
     setStatus(
-      `Saldo dibaca dari ${data.source} · ${stamp}. Data ini hanya ada di sesi browser ini dan tidak disimpan.`,
+      `Terhubung · saldo dibaca dari ${data.source} pada ${stamp}. Data ini hanya ada di sesi browser ini dan tidak disimpan.`,
       "good",
     );
+    setupFeedback.textContent =
+      "Koneksi berhasil. Nalar memakai akses baca-saja; tidak ada order yang dibuat atau dikirim.";
     result.replaceChildren();
   }
 
@@ -181,18 +236,43 @@
     result.append(title, metadata, summary, cards, notice);
   }
 
-  syncButton.addEventListener("click", async () => {
+  checkButton.addEventListener("click", async () => {
     if (state.busy) return;
     state.busy = true;
+    checkButton.disabled = true;
+    checkButton.textContent = "Memeriksa…";
+    await loadStatus(true);
+    state.busy = false;
+    checkButton.disabled = false;
+    checkButton.textContent = "Periksa konfigurasi";
+    syncButton.disabled = !state.configured;
+  });
+
+  syncButton.addEventListener("click", async () => {
+    if (state.busy || !state.configured) return;
+    state.busy = true;
     syncButton.disabled = true;
-    setStatus("Meminta saldo Spot baca-saja dari Binance…", "info");
+    checkButton.disabled = true;
+    setStatus(
+      "Menguji koneksi dengan satu permintaan akun Binance Spot baca-saja…",
+      "info",
+    );
+    setupFeedback.textContent =
+      "Menunggu respons Binance. Nalar hanya membaca akun; tidak ada transaksi yang dikirim.";
     try {
       renderBalances(await request("/api/binance/sync", "POST"));
     } catch (error) {
+      state.connected = false;
+      state.connectionError = error.message;
+      const stepThree = $("#spotStep3State");
+      stepThree.textContent = "Belum terhubung · periksa akses";
+      stepThree.dataset.kind = "warning";
       setStatus(error.message, "warning");
+      setupFeedback.textContent = `Koneksi belum berhasil. ${error.message} Periksa permission baca, pembatasan IP, dan format key; jangan mengirim nilainya ke chat.`;
     } finally {
       state.busy = false;
-      syncButton.disabled = false;
+      checkButton.disabled = false;
+      syncButton.disabled = !state.configured;
     }
   });
 
@@ -200,7 +280,7 @@
     event.preventDefault();
     if (!state.synced)
       return setStatus(
-        "Sinkronkan saldo terlebih dahulu; Nalar tidak menerima saldo ketikan dari browser.",
+        "Tes koneksi dan sinkronkan saldo terlebih dahulu; Nalar tidak menerima saldo ketikan dari browser.",
         "warning",
       );
     const submit = $("button[type=submit]", form);
@@ -232,6 +312,30 @@
   $("#conversationList").addEventListener("click", () => {
     if (main.classList.contains("spot-active")) showPanel(false);
   });
+
+  function showPanel(open) {
+    if (
+      open &&
+      (window.NalarAuth.authenticated === false ||
+        !window.NalarAuth.authenticated)
+    )
+      return;
+    if (open)
+      state.title = $("#conversationTitle").textContent || "Percakapan baru";
+    main.classList.toggle("spot-active", open);
+    panel.hidden = !open;
+    nav.setAttribute("aria-current", open ? "page" : "false");
+    if (open) {
+      $("#appShell").classList.remove("sidebar-open");
+      $("#conversationTitle").textContent = "Analisis Binance Spot";
+      loadStatus();
+      checkButton.focus();
+    } else {
+      $("#conversationTitle").textContent = state.title;
+      $("#promptInput").focus({ preventScroll: true });
+    }
+  }
+
   window.NalarAuth.ready.then((authenticated) => {
     if (authenticated) loadStatus();
   });

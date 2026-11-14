@@ -831,7 +831,7 @@ async function route(req, res) {
   if (req.method === "POST" && pathname === "/api/feedback")
     return feedback(req, res, ownerId);
   if (req.method === "GET" && pathname === "/api/binance/status")
-    return sendJson(res, 200, { configured: binance.isConfigured() });
+    return sendJson(res, 200, binance.configurationStatus());
   if (req.method === "POST" && pathname === "/api/binance/sync")
     return sendJson(res, 200, await binance.syncAccount());
   if (req.method === "POST" && pathname === "/api/binance/analyze")

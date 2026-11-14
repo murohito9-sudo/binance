@@ -82,7 +82,7 @@
           <svg viewBox="0 0 24 24" aria-hidden="true">
             <path d="M4 18V6m0 12h16M8 15l3-4 3 2 5-7" />
           </svg>
-          <span>Analisis Binance Spot</span>
+          <span>Hubungkan Binance Spot</span>
         </button>
         <label class="search-box" for="searchInput">
           <svg viewBox="0 0 24 24" aria-hidden="true">
@@ -228,23 +228,97 @@
             >
               Memeriksa konfigurasi…
             </div>
-            <section class="spot-card" aria-labelledby="spotSafetyHeading">
-              <h2 id="spotSafetyHeading">Koneksi dengan batas ketat</h2>
+            <section
+              class="spot-card spot-setup-card"
+              aria-labelledby="spotSetupHeading"
+            >
+              <h2 id="spotSetupHeading">Cara menghubungkan akun</h2>
               <p>
-                Gunakan API key Binance dengan izin baca data akun saja. Jangan
-                aktifkan trade, withdrawal, Margin, atau Futures. V1 hanya
-                menandatangani permintaan <code>GET</code> akun Spot; data akun
-                tidak dikirim ke model AI dan tidak disimpan ke chat atau
-                database.
+                Ikuti tiga langkah ini. Nalar tidak meminta API key atau private
+                key di halaman ini; simpan keduanya hanya melalui Secrets
+                proyek.
               </p>
-              <button
-                class="primary-button"
-                id="syncBinance"
-                type="button"
-                disabled
-              >
-                Sinkronkan saldo Spot
-              </button>
+              <ol class="spot-setup-steps">
+                <li>
+                  <span class="setup-number" aria-hidden="true">1</span>
+                  <div class="setup-step-copy">
+                    <strong>Buat API key Spot di Binance</strong>
+                    <p>
+                      Di Binance, buka pengelolaan API. Pilih key Ed25519 dan
+                      aktifkan hanya izin baca data. Matikan trading, penarikan,
+                      Margin, dan Futures; gunakan pembatasan IP jika tersedia.
+                    </p>
+                  </div>
+                  <span class="setup-step-state" id="spotStep1State"
+                    >Tindakan di Binance</span
+                  >
+                </li>
+                <li>
+                  <span class="setup-number" aria-hidden="true">2</span>
+                  <div class="setup-step-copy">
+                    <strong>Tambahkan dua Secrets proyek</strong>
+                    <p>
+                      Masukkan nilainya di Pengaturan proyek → Secrets, bukan di
+                      chat atau form situs. Untuk mencoba Preview, pilih
+                      lingkungan Development; nilai Development tidak otomatis
+                      berlaku di Production. Jika status belum berubah sesudah
+                      disimpan, restart Preview lalu tekan “Periksa konfigurasi”
+                      lagi.
+                    </p>
+                    <ul class="secret-name-list">
+                      <li><code>BINANCE_API_KEY</code></li>
+                      <li><code>BINANCE_ED25519_PRIVATE_KEY</code></li>
+                    </ul>
+                  </div>
+                  <span class="setup-step-state" id="spotStep2State"
+                    >Belum diperiksa</span
+                  >
+                </li>
+                <li>
+                  <span class="setup-number" aria-hidden="true">3</span>
+                  <div class="setup-step-copy">
+                    <strong>Periksa konfigurasi, lalu uji koneksi</strong>
+                    <p>
+                      Nalar hanya memeriksa nama secret dan format
+                      kunci—nilainya tidak ditampilkan.
+                    </p>
+                  </div>
+                  <span class="setup-step-state" id="spotStep3State"
+                    >Menunggu konfigurasi</span
+                  >
+                </li>
+              </ol>
+              <div class="spot-setup-actions">
+                <button
+                  class="secondary-button"
+                  id="checkBinanceSecrets"
+                  type="button"
+                >
+                  Periksa konfigurasi
+                </button>
+                <button
+                  class="primary-button"
+                  id="syncBinance"
+                  type="button"
+                  disabled
+                >
+                  Tes koneksi &amp; sinkronkan saldo
+                </button>
+              </div>
+              <p
+                class="spot-setup-feedback"
+                id="spotSetupFeedback"
+                role="status"
+                aria-live="polite"
+              ></p>
+            </section>
+            <section class="spot-card" aria-labelledby="spotSafetyHeading">
+              <h2 id="spotSafetyHeading">Batas keamanan Nalar</h2>
+              <p>
+                Koneksi hanya membaca saldo Spot saat kamu menekan tombol tes.
+                Data akun tidak dikirim ke model AI dan tidak disimpan ke chat
+                atau database. Nalar tidak membuat atau mengirim transaksi.
+              </p>
             </section>
             <section class="spot-card" aria-labelledby="spotBalancesHeading">
               <div class="spot-section-heading">

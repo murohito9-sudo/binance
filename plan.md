@@ -26,6 +26,7 @@ Alternatif gaya yang dipertimbangkan: editorial Swiss yang tenang (0,061); neo-b
 - Identitas allowlist menyimpan hash HMAC openId saja pada tabel tambahan satu baris. Riwayat guest lama tidak dihapus; riwayat baru terpisah pada identitas pemilik.
 - Kunci Binance dan email pemilik hanya dibaca dari project secrets saat server berjalan. Kunci Binance yang didukung untuk versi pertama adalah API key Ed25519 dan private key PEM Ed25519. Tidak ada kunci atau signature yang masuk ke browser, basis data, chat AI, penyimpanan berkas, atau log.
 - Sinkron akun terjadi hanya setelah tindakan pemilik dan memakai endpoint Binance Spot `GET /api/v3/account` bertipe `USER_DATA`. Analisis harga memakai endpoint publik Binance Spot `GET /api/v3/ticker/price` dan `GET /api/v3/klines`. Aplikasi tidak memanggil endpoint transaksi, dompet, Futures, atau Margin dan tidak membuat pemantau berkala.
+- Klik navigasi Binance membuka wizard berbahasa Indonesia yang menyebut prasyarat API key Ed25519 baca-saja, dua nama secret, lokasi aman untuk menyetelnya, cara memeriksa secret yang belum ada, dan langkah tes koneksi. Halaman tidak meminta nilai kunci; pengguna menyimpannya melalui project Secrets dan memilih Development saat menggunakan Preview (nilai Development tidak otomatis berlaku di Production). Hanya setelah pemeriksaan menunjukkan konfigurasi lengkap, tombol tindakan eksplisit dapat menguji `GET /api/v3/account` dan mengambil saldo; sukses menandai koneksi baca-saja pada sesi tab tersebut, sedangkan kegagalan memberi petunjuk perbaikan tanpa membocorkan credential.
 - Saldo hanya diproses sesaat di server dan browser; tidak disimpan dalam database, riwayat chat, atau log. Analisis Nalar Spot versi awal dihitung deterministik di server, bukan dikirim ke layanan LLM bersama data keuangan pribadi.
 - Cakupan V1 hanya aset Spot dengan pasangan langsung `USDT` dan posisi long. Saldo free dan locked dibaca. Harga rata-rata masuk dan batas kerugian per posisi harus dimasukkan pemilik; saldo akun tidak cukup untuk menyimpulkan harga masuk.
 - Stop-loss berupa tiga skenario berbasis ATR(14) pada timeframe yang dipilih (1h, 4h, atau 1d), dengan kelipatan 1.5x, 2x, dan 3x. Tiap skenario menampilkan sumber Binance, waktu data/penutupan candle, level usulan, jarak terhadap harga kini, dan estimasi kerugian untuk saldo terbaca. Nilai yang melampaui anggaran risiko ditandai; sistem tidak menyesuaikan posisi atau mengeksekusi order. Jika aset/pasangan, saldo, candle lengkap, harga masuk, atau batas risiko tidak tersedia, Nalar menahan rekomendasi angka dan menjelaskan data yang kurang.
@@ -37,14 +38,15 @@ Alternatif gaya yang dipertimbangkan: editorial Swiss yang tenang (0,061); neo-b
 - `public/styles.css` — sistem visual responsif, fokus keyboard, drawer seluler, login, dashboard akun, dan status interaksi.
 - `public/auth.js` — alur Manus OAuth browser, pembaruan sesi pemilik, token CSRF, dan keluar.
 - `public/app.js` — state UI dan pemanggilan chat/riwayat hanya setelah sesi terverifikasi.
-- `public/spot.js` — sinkronisasi manual saldo, panel saldo sementara, input risiko, dan tampilan skenario stop-loss.
+- `public/spot.js` — wizard koneksi, pemeriksaan status secrets, sinkronisasi manual saldo, panel saldo sementara, input risiko, dan tampilan skenario stop-loss.
 - `public/manus-routes.json` — deklarasi rute UI satu halaman.
 - `server.js` — server HTTP, endpoint chat/riwayat/upload, pemeriksaan sesi dan CSRF, serta routing API.
 - `lib/auth.js` — verifikasi Manus OAuth, allowlist pemilik, cookie sesi HS256, dan ownership hash.
-- `lib/binance.js` — penandatanganan permintaan Spot baca-saja, sinkronisasi saldo, serta validasi freshness.
+- `lib/binance.js` — pemeriksaan secret/format Ed25519 tanpa mengembalikan nilai, penandatanganan permintaan Spot baca-saja, sinkronisasi saldo, serta validasi freshness.
 - `lib/spot-analysis.js` — kalkulasi desimal ATR(14) dan skenario risiko.
 - `db/schema.sql` — skema percakapan dan hash identitas pemilik yang idempoten.
 - `docs/binance-readonly.md` — rujukan resmi Binance dan batas endpoint integrasi.
+- `test/binance-config.test.js` — pengujian status secret dan validasi tipe key tanpa akses jaringan atau akun.
 - `test/spot-analysis.test.js` — pengujian kalkulasi risiko tanpa akses akun.
 - `package.json` — dependensi Node, skrip start, dan test.
 
@@ -54,7 +56,7 @@ Alternatif gaya yang dipertimbangkan: editorial Swiss yang tenang (0,061); neo-b
 - Mode analisis Binance hanya Spot, long, pasangan USDT langsung, analisis manual saat pemilik menekan tombol; tidak mencakup Futures, margin, pemantauan otomatis, paper trading, atau eksekusi order.
 - Harga masuk dan anggaran risiko diisi pemilik untuk setiap analisis dan tidak dipersistenkan. Jika nilai kritis hilang atau data stale/gagal, sistem tidak mengarang level.
 - API key harus disetel oleh pengguna agar hanya memiliki izin baca data akun, tanpa izin trade, withdraw, margin, atau futures. Aplikasi tetap hanya memakai GET.
-- Kredensial Binance belum tersedia di konfigurasi saat implementasi dilanjutkan; panel harus menampilkan status belum dikonfigurasi dan menahan sinkronisasi sampai secrets proyek disetel.
+- Kredensial Binance belum tersedia di konfigurasi saat implementasi dilanjutkan; wizard menampilkan nama secret yang belum dipasang dan menahan sinkronisasi sampai secrets proyek disetel dan konfigurasi diperiksa.
 - Pengguna memasukkan email pemilik, API key, dan private key hanya melalui input rahasia terproteksi; jangan meminta nilai-nilainya di chat. Kredensial dev tidak otomatis berlaku pada produksi.
 - Hasil harga/risiko adalah alat bantu analitis satu sumber; bukan jaminan, nasihat keuangan pasti, atau instruksi order.
 - Tidak menerbitkan situs ke publik kecuali diminta terpisah; perubahan disiapkan untuk Preview proyek.

@@ -1903,3 +1903,117 @@ select:focus-visible {
     font-size: 11px;
   }
 }
+
+.spot-setup-steps {
+  display: grid;
+  gap: 10px;
+  margin: 16px 0;
+  padding: 0;
+  list-style: none;
+}
+.spot-setup-steps li {
+  display: grid;
+  grid-template-columns: 28px minmax(0, 1fr) auto;
+  align-items: start;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid #e4ebe7;
+  border-radius: 11px;
+  background: #fcfdfc;
+}
+.setup-number {
+  width: 26px;
+  height: 26px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  background: var(--accent-pale);
+  color: var(--accent-dark);
+  font-size: 11px;
+  font-weight: 700;
+}
+.setup-step-copy {
+  min-width: 0;
+}
+.setup-step-copy strong {
+  display: block;
+  color: #35443c;
+  font-size: 12px;
+  line-height: 1.5;
+}
+.setup-step-copy p {
+  margin: 4px 0 0;
+  color: #69766f;
+  font-size: 11px;
+  line-height: 1.6;
+}
+.setup-step-state {
+  max-width: 185px;
+  padding: 4px 7px;
+  border-radius: 999px;
+  background: #eff2f0;
+  color: #5e6b64;
+  font-size: 9px;
+  line-height: 1.4;
+  text-align: center;
+}
+.setup-step-state[data-kind="good"] {
+  background: #eaf5ef;
+  color: #285b47;
+}
+.setup-step-state[data-kind="warning"] {
+  background: #fff4df;
+  color: #70551f;
+}
+.setup-step-state[data-kind="ready"] {
+  background: #e9f3f2;
+  color: #255b58;
+}
+.secret-name-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+  margin: 8px 0 0;
+  padding: 0;
+  list-style: none;
+}
+.secret-name-list code {
+  display: inline-block;
+  padding: 5px 7px;
+  font-size: 10px;
+  overflow-wrap: anywhere;
+}
+.spot-setup-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 9px;
+  margin-top: 12px;
+}
+.spot-setup-feedback {
+  margin: 10px 0 0 !important;
+  color: #53675c !important;
+  font-size: 11px !important;
+  line-height: 1.6 !important;
+}
+.spot-setup-feedback:empty {
+  display: none;
+}
+@media (max-width: 700px) {
+  .spot-setup-steps li {
+    grid-template-columns: 26px minmax(0, 1fr);
+  }
+  .setup-step-state {
+    grid-column: 2;
+    justify-self: start;
+  }
+}
+@media (max-width: 480px) {
+  .spot-setup-actions {
+    align-items: stretch;
+    flex-direction: column;
+  }
+  .spot-setup-actions button {
+    width: 100%;
+  }
+}
