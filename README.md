@@ -37,7 +37,7 @@ test/                         Unit test (node:test)
 
 Tanpa framework UI dan tanpa build step: `public/` disajikan apa adanya, seluruh panggilan model dan Binance dilakukan di server. Skema database diterapkan otomatis lewat migrasi bernomor saat start; tidak ada `DROP` atau perubahan destruktif.
 
-Dokumentasi tambahan: [audit](docs/audit-2026-11-17.md), [arsitektur](docs/architecture.md), [laporan upgrade](docs/upgrade-report-2026-11-17.md), [analisis Spot](docs/binance-readonly.md).
+Dokumentasi tambahan: [panduan deploy](docs/deploy.md), [audit](docs/audit-2026-11-17.md), [arsitektur](docs/architecture.md), [laporan upgrade](docs/upgrade-report-2026-11-17.md), [analisis Spot](docs/binance-readonly.md).
 
 ## Menjalankan secara lokal
 
@@ -78,7 +78,8 @@ Semua kredensial dibaca saat runtime dan tidak pernah masuk ke browser, database
 
 ### Endpoint operasional
 
-- `GET /api/health` — tanpa login. `200` berarti server, database, dan migrasi siap; `503` dengan `{"database":"down"}` berarti server hidup tetapi database belum terhubung.
+- `GET /api/live` — tanpa login. Selalu `200` selama proses hidup; dipakai platform hosting untuk liveness probe.
+- `GET /api/health` — tanpa login. `200` berarti server, database, dan migrasi siap; `503` dengan `{"database":"down"}` berarti server hidup tetapi database belum terhubung. Pakai ini untuk readiness, bukan untuk restart otomatis.
 - `GET /api/ai/status` — khusus pemilik. Menampilkan urutan provider, status konfigurasi, metrik permintaan, dan hasil pemeriksaan terakhir. Tambahkan `?probe=1` untuk memaksa pemeriksaan HTTP nyata ke provider; status "reachable" tidak pernah disimpulkan dari keberadaan API key.
 - Setiap respons membawa `X-Request-Id` yang juga muncul di log, sehingga keluhan pengguna dapat dilacak ke satu baris log.
 
@@ -94,6 +95,12 @@ docker run --rm -p 3000:3000 --env-file .env nalarai
 ```
 
 Image memakai `npm ci --omit=dev` dari lockfile, berjalan sebagai pengguna non-root, dan melayani `public/` dari container.
+
+## Deploy
+
+Repo sudah siap untuk platform container: `render.yaml` (Render Blueprint), `fly.toml` (Fly.io), `railway.json` (Railway), `docker-compose.yml` (VPS), dan workflow `.github/workflows/docker-publish.yml` yang mendorong image ke `ghcr.io/murohito9-sudo/binance`. Langkah lengkap, daftar variabel yang wajib diisi, verifikasi pasca-deploy, dan arti tiap pesan galat ada di [docs/deploy.md](docs/deploy.md).
+
+Perlu diingat: setelah deploy, aplikasi tetap hanya bisa dimasuki pemilik (`NALARAI_OWNER_EMAIL`). Tautan hidup tidak otomatis berarti bisa dicoba publik — lihat bagian "Soal login" di panduan deploy.
 
 ## Pengujian
 
