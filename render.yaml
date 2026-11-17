@@ -1,0 +1,40 @@
+# Render Blueprint — satu klik deploy dari repo ini.
+# Rahasia sengaja tidak ditulis di sini: isi lewat dashboard Render
+# (Environment -> Add Environment Variable) atau saat blueprint dijalankan.
+services:
+  - type: web
+    name: nalar-ai
+    runtime: docker
+    plan: free
+    region: singapore
+    dockerfilePath: ./Dockerfile
+    healthCheckPath: /api/live
+    autoDeploy: true
+    envVars:
+      - key: PORT
+        value: "3000"
+      - key: LOG_LEVEL
+        value: info
+      - key: NODE_ENV
+        value: production
+      # Wajib diisi manual (sync: false = Render akan meminta nilainya):
+      - key: DATABASE_URL
+        sync: false
+      - key: MANUS_API_URL
+        sync: false
+      - key: MANUS_API_KEY
+        sync: false
+      - key: MANUS_OAUTH_PORTAL_URL
+        sync: false
+      - key: MANUS_OAUTH_API_URL
+        sync: false
+      - key: MANUS_PROJECT_ID
+        sync: false
+      - key: MANUS_JWT_SECRET
+        sync: false
+      - key: NALARAI_OWNER_EMAIL
+        sync: false
+      - key: BINANCE_API_KEY
+        sync: false
+      - key: BINANCE_ED25519_PRIVATE_KEY
+        sync: false
