@@ -61,6 +61,7 @@ const SYSTEM_PROMPTS = {
 };
 
 let pool;
+let dbReady = false;
 let shuttingDown = false;
 
 function sendJson(res, status, value) {
@@ -71,6 +72,8 @@ function sendJson(res, status, value) {
     "Content-Length": Buffer.byteLength(body),
     "Cache-Control": "no-store",
     "X-Content-Type-Options": "nosniff",
+    "X-Frame-Options": "DENY",
+    "Referrer-Policy": "no-referrer",
   });
   res.end(body);
 }
@@ -140,8 +143,19 @@ function parseAttachments(value) {
 async function initDatabase() {
   if (!process.env.DATABASE_URL)
     throw new Error("DATABASE_URL belum tersedia pada runtime.");
-  pool = mysql.createPool(process.env.DATABASE_URL);
-  await pool.query(`CREATE TABLE IF NOT EXISTS conversations (
+  const next = mysql.createPool(process.env.DATABASE_URL);
+  try {
+    await createTables(next);
+  } catch (error) {
+    await next.end().catch(() => {});
+    throw error;
+  }
+  pool = next;
+  dbReady = true;
+}
+
+async function createTables(target) {
+  await target.query(`CREATE TABLE IF NOT EXISTS conversations (
     id CHAR(36) NOT NULL PRIMARY KEY,
     owner_id CHAR(36) NOT NULL,
     title VARCHAR(120) NOT NULL DEFAULT 'Percakapan baru',
@@ -150,7 +164,7 @@ async function initDatabase() {
     updated_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3),
     INDEX conversations_owner_updated (owner_id, updated_at)
   ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`);
-  await pool.query(`CREATE TABLE IF NOT EXISTS messages (
+  await target.query(`CREATE TABLE IF NOT EXISTS messages (
     seq BIGINT UNSIGNED NOT NULL AUTO_INCREMENT UNIQUE,
     id CHAR(36) NOT NULL PRIMARY KEY,
     conversation_id CHAR(36) NOT NULL,
@@ -163,7 +177,7 @@ async function initDatabase() {
     CONSTRAINT messages_conversation_fk FOREIGN KEY (conversation_id)
       REFERENCES conversations (id) ON DELETE CASCADE
   ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`);
-  await pool.query(`CREATE TABLE IF NOT EXISTS owner_identity (
+  await target.query(`CREATE TABLE IF NOT EXISTS owner_identity (
     id TINYINT UNSIGNED NOT NULL PRIMARY KEY,
     subject_hash BINARY(32) NOT NULL,
     created_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3)
@@ -750,16 +764,21 @@ async function serveStatic(req, res, pathname) {
   }
   if (!stats.isFile())
     return sendJson(res, 404, { error: "Halaman tidak ditemukan." });
-  res.writeHead(200, {
-    "Content-Type":
-      MIME_TYPES[path.extname(filePath).toLowerCase()] ||
-      "application/octet-stream",
+  const contentType =
+    MIME_TYPES[path.extname(filePath).toLowerCase()] ||
+    "application/octet-stream";
+  const headers = {
+    "Content-Type": contentType,
     "Content-Length": stats.size,
-    "Cache-Control":
-      path.basename(filePath) === "manus-routes.json" ? "no-cache" : "no-cache",
+    "Cache-Control": "no-cache",
     "X-Content-Type-Options": "nosniff",
+    "X-Frame-Options": "DENY",
     "Referrer-Policy": "strict-origin-when-cross-origin",
-  });
+  };
+  if (contentType.startsWith("text/html"))
+    headers["Content-Security-Policy"] =
+      "default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; script-src 'self'; connect-src 'self'; form-action 'self'; base-uri 'none'; frame-ancestors 'none'";
+  res.writeHead(200, headers);
   if (req.method === "HEAD") return res.end();
   fs.createReadStream(filePath).pipe(res);
 }
@@ -786,7 +805,11 @@ async function route(req, res) {
   const url = new URL(req.url, "http://localhost");
   const pathname = url.pathname;
   if (req.method === "GET" && pathname === "/api/health")
-    return sendJson(res, 200, { ok: true });
+    return sendJson(res, dbReady ? 200 : 503, {
+      ok: dbReady,
+      database: dbReady ? "up" : "down",
+      uptimeSeconds: Math.round(process.uptime()),
+    });
   if (req.method === "GET" && pathname === "/api/auth/session")
     return authSession(req, res);
   if (req.method === "POST" && pathname === "/api/auth/start") {
@@ -810,6 +833,12 @@ async function route(req, res) {
 
   if (!pathname.startsWith("/api/"))
     return sendJson(res, 404, { error: "Endpoint tidak ditemukan." });
+
+  if (!dbReady)
+    return sendJson(res, 503, {
+      error:
+        "Database belum siap. Periksa DATABASE_URL lalu coba lagi sebentar lagi.",
+    });
 
   const owner = await ownerAuth.findOwner(req, pool);
   if (req.method !== "GET" && req.method !== "HEAD")
@@ -884,16 +913,14 @@ const server = http.createServer(async (req, res) => {
 server.headersTimeout = 30000;
 server.requestTimeout = 120000;
 
-initDatabase()
-  .then(() => {
-    server.listen(PORT, "0.0.0.0", () =>
-      console.log(`Nalar AI listening on port ${PORT}`),
-    );
-  })
-  .catch((error) => {
-    console.error("[nalar] Database initialization failed");
-    process.exitCode = 1;
-  });
+server.listen(PORT, "0.0.0.0", () =>
+  console.log(`Nalar AI listening on port ${PORT}`),
+);
+
+initDatabase().catch((error) => {
+  dbReady = false;
+  console.error("[nalar] Database initialization failed:", error.message);
+});
 
 async function shutdown() {
   if (shuttingDown) return;

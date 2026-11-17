@@ -3,6 +3,7 @@ const assert = require("node:assert/strict");
 const {
   calculateStopScenarios,
   calculateTechnicalIndicators,
+  display,
 } = require("../lib/spot-analysis");
 
 function flatCandles({ high = "110", low = "90", close = "100" } = {}) {
@@ -156,4 +157,13 @@ test("flat data is mixed and insufficient/invalid indicator samples fail closed"
     () => calculateTechnicalIndicators(invalid),
     /Close candle tidak valid/,
   );
+});
+
+test("angka yang tidak terbaca menjadi null, bukan NaN", () => {
+  assert.equal(display(null), null);
+  assert.equal(display(undefined), null);
+  assert.equal(display("bukan-angka"), null);
+  assert.equal(display(Number.POSITIVE_INFINITY), null);
+  assert.equal(display("1.234567891"), "1.23456789");
+  assert.equal(display("2", 2), "2");
 });

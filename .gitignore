@@ -1,0 +1,30 @@
+# Dependensi
+node_modules/
+npm-debug.log*
+
+# Rahasia — jangan pernah di-commit
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+*.pfx
+secrets/
+config.local.json
+
+# Data lokal & build
+data/
+uploads/
+tmp/
+dist/
+coverage/
+*.sqlite
+*.sqlite3
+*.log
+
+# Editor / OS
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/

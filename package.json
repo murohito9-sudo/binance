@@ -1,6 +1,6 @@
 {
   "name": "nalarai",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "private": true,
   "packageManager": "npm@10.9.9",
   "description": "Asisten AI percakapan dan analisis Spot baca-saja berbahasa Indonesia",
@@ -14,5 +14,17 @@
   "dependencies": {
     "decimal.js": "10.5.0",
     "mysql2": "^3.14.1"
-  }
+  },
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/murohito9-sudo/binance.git"
+  },
+  "keywords": [
+    "nalar",
+    "asisten-ai",
+    "binance-spot",
+    "read-only",
+    "nodejs"
+  ]
 }
