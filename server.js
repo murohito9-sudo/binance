@@ -6,10 +6,33 @@ const { URL } = require("node:url");
 const mysql = require("mysql2/promise");
 const ownerAuth = require("./lib/auth");
 const binance = require("./lib/binance");
+const { readConfig } = require("./lib/config");
+const { createLogger } = require("./lib/logger");
+const { createLimiter } = require("./lib/rate-limit");
+const { createProviderRegistry } = require("./lib/providers");
+const { runMigrations } = require("./lib/migrations");
 
 const ROOT = __dirname;
 const PUBLIC_DIR = path.join(ROOT, "public");
-const PORT = Number(process.env.PORT || 3000);
+const CONFIG = readConfig();
+const PORT = CONFIG.port;
+const log = createLogger({ level: CONFIG.logLevel });
+const providers = createProviderRegistry(CONFIG);
+const limiters = {
+  chat: createLimiter({
+    limit: CONFIG.rateLimit.chatPerMinute,
+    windowMs: 60_000,
+  }),
+  binance: createLimiter({
+    limit: CONFIG.rateLimit.binancePerMinute,
+    windowMs: 60_000,
+  }),
+  upload: createLimiter({
+    limit: CONFIG.rateLimit.uploadPerMinute,
+    windowMs: 60_000,
+  }),
+};
+let migrationState = { current: null, total: 0, ran: [] };
 const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const MODES = new Set(["balanced", "concise", "creative"]);
@@ -141,11 +164,16 @@ function parseAttachments(value) {
 }
 
 async function initDatabase() {
-  if (!process.env.DATABASE_URL)
+  if (!CONFIG.databaseUrl)
     throw new Error("DATABASE_URL belum tersedia pada runtime.");
-  const next = mysql.createPool(process.env.DATABASE_URL);
+  const next = mysql.createPool(CONFIG.databaseUrl);
   try {
-    await createTables(next);
+    const result = await runMigrations({ pool: next, logger: log });
+    migrationState = {
+      current: result.current,
+      total: result.total,
+      ran: result.ran,
+    };
   } catch (error) {
     await next.end().catch(() => {});
     throw error;
@@ -154,34 +182,45 @@ async function initDatabase() {
   dbReady = true;
 }
 
-async function createTables(target) {
-  await target.query(`CREATE TABLE IF NOT EXISTS conversations (
-    id CHAR(36) NOT NULL PRIMARY KEY,
-    owner_id CHAR(36) NOT NULL,
-    title VARCHAR(120) NOT NULL DEFAULT 'Percakapan baru',
-    mode VARCHAR(24) NOT NULL DEFAULT 'balanced',
-    created_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
-    updated_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3),
-    INDEX conversations_owner_updated (owner_id, updated_at)
-  ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`);
-  await target.query(`CREATE TABLE IF NOT EXISTS messages (
-    seq BIGINT UNSIGNED NOT NULL AUTO_INCREMENT UNIQUE,
-    id CHAR(36) NOT NULL PRIMARY KEY,
-    conversation_id CHAR(36) NOT NULL,
-    role VARCHAR(16) NOT NULL,
-    content LONGTEXT NOT NULL,
-    attachments JSON NULL,
-    feedback TINYINT NULL,
-    created_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
-    INDEX messages_conversation_seq (conversation_id, seq),
-    CONSTRAINT messages_conversation_fk FOREIGN KEY (conversation_id)
-      REFERENCES conversations (id) ON DELETE CASCADE
-  ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`);
-  await target.query(`CREATE TABLE IF NOT EXISTS owner_identity (
-    id TINYINT UNSIGNED NOT NULL PRIMARY KEY,
-    subject_hash BINARY(32) NOT NULL,
-    created_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3)
-  ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`);
+/**
+ * Records one AI request. Best effort: a logging failure must never break a
+ * conversation, and no prompt or answer text is stored here.
+ */
+async function recordUsage(entry) {
+  if (!dbReady) return;
+  try {
+    await pool.execute(
+      `INSERT INTO usage_logs
+        (owner_id, conversation_id, provider, model, status, latency_ms,
+         prompt_chars, completion_chars, attempts)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        entry.ownerId,
+        entry.conversationId || null,
+        String(entry.provider || "unknown").slice(0, 40),
+        entry.model ? String(entry.model).slice(0, 80) : null,
+        String(entry.status || "unknown").slice(0, 16),
+        Math.max(0, Math.min(Number(entry.latencyMs) || 0, 4294967295)),
+        entry.promptChars ?? null,
+        entry.completionChars ?? null,
+        Math.max(1, Math.min(Number(entry.attempts) || 1, 65535)),
+      ],
+    );
+  } catch (error) {
+    log.warn("usage.write_failed", { message: error.message });
+  }
+}
+
+function enforceLimit(limiter, key, res) {
+  const verdict = limiter.check(key);
+  res.setHeader("X-RateLimit-Limit", String(limiter.limit));
+  res.setHeader("X-RateLimit-Remaining", String(verdict.remaining));
+  if (verdict.allowed) return true;
+  res.setHeader("Retry-After", String(verdict.retryAfterSeconds));
+  sendJson(res, 429, {
+    error: "Terlalu banyak permintaan. Tunggu sebentar lalu coba lagi.",
+  });
+  return false;
 }
 
 async function findConversation(id, ownerId) {
@@ -459,8 +498,7 @@ async function validateChatAttachments(input, ownerId, conversationId) {
 
 async function writeModelStream(req, res, ownerId) {
   const body = await readJson(req, 2 * 1024 * 1024);
-  const apiBase = process.env.MANUS_API_URL;
-  if (!apiBase || !process.env.MANUS_API_KEY)
+  if (!providers.available().length)
     return sendJson(res, 503, {
       error: "Layanan AI belum terhubung pada runtime ini.",
     });
@@ -608,88 +646,17 @@ async function writeModelStream(req, res, ownerId) {
     })),
   });
   let assistantText = "";
+  const streamStartedAt = Date.now();
   try {
-    const upstream = await fetch(
-      `${apiBase.replace(/\/+$/, "")}/v1/chat/completions`,
-      {
-        method: "POST",
-        signal: controller.signal,
-        headers: serviceHeaders({
-          "Content-Type": "application/json",
-          Accept: "text/event-stream",
-        }),
-        body: JSON.stringify({ messages, stream: true }),
-      },
-    );
-    if (!upstream.ok) {
-      const detail = await upstream.text();
-      let friendly = `Layanan AI merespons dengan status ${upstream.status}.`;
-      try {
-        const parsed = JSON.parse(detail);
-        friendly = parsed.error?.message || parsed.error || friendly;
-      } catch {
-        if (detail) friendly = detail.slice(0, 420);
-      }
-      throw new Error(friendly);
-    }
-    if (!upstream.body) throw new Error("Aliran jawaban AI tidak tersedia.");
-    const reader = upstream.body.getReader();
-    const decoder = new TextDecoder();
-    let pending = "";
-    let readDone = false;
-    let sawDone = false;
-    const consumeBlock = (block) => {
-      const data = block
-        .split(/\r?\n/)
-        .filter((line) => line.startsWith("data:"))
-        .map((line) => line.slice(5).trim())
-        .join("\n");
-      if (!data) return false;
-      if (data === "[DONE]") return true;
-      let chunk;
-      try {
-        chunk = JSON.parse(data);
-      } catch {
-        return false;
-      }
-      if (chunk.error)
-        throw new Error(
-          chunk.error.message || "Layanan AI gagal memproses permintaan.",
-        );
-      let delta = chunk.choices?.[0]?.delta?.content;
-      if (Array.isArray(delta))
-        delta = delta.map((part) => part.text || "").join("");
-      if (typeof delta === "string" && delta) {
+    const result = await providers.streamChat({
+      messages,
+      signal: controller.signal,
+      logger: log,
+      onDelta: (delta) => {
         assistantText += delta;
         writeSse(res, { type: "delta", text: delta });
-      }
-      return false;
-    };
-    while (!readDone) {
-      const { value, done } = await reader.read();
-      if (done) {
-        readDone = true;
-        break;
-      }
-      pending += decoder.decode(value, { stream: true });
-      const blocks = pending.split(/\r?\n\r?\n/);
-      pending = blocks.pop() || "";
-      for (const block of blocks) {
-        if (consumeBlock(block)) {
-          sawDone = true;
-          readDone = true;
-          break;
-        }
-      }
-    }
-    if (!sawDone) {
-      pending += decoder.decode();
-      if (pending.trim()) sawDone = consumeBlock(pending);
-    }
-    if (!sawDone)
-      throw new Error(
-        "Aliran jawaban terputus sebelum selesai. Coba ulangi pesanmu.",
-      );
+      },
+    });
     if (controller.signal.aborted) return;
     if (!assistantText.trim())
       throw new Error(
@@ -711,12 +678,46 @@ async function writeModelStream(req, res, ownerId) {
       "UPDATE conversations SET updated_at = CURRENT_TIMESTAMP(3) WHERE id = ? AND owner_id = ?",
       [conversationId, ownerId],
     );
+    await recordUsage({
+      ownerId,
+      conversationId,
+      provider: result.provider,
+      model: result.model,
+      status: "ok",
+      latencyMs: Date.now() - streamStartedAt,
+      promptChars: prompt.length,
+      completionChars: assistantText.length,
+      attempts: result.attempts?.length || 1,
+    });
+    log.info("ai.chat_completed", {
+      requestId: res.getHeader("X-Request-Id") || undefined,
+      provider: result.provider,
+      conversationId,
+      latencyMs: Date.now() - streamStartedAt,
+      completionChars: assistantText.length,
+    });
     finished = true;
     writeSse(res, { type: "done", messageId: assistantId });
     res.end();
   } catch (error) {
     if (controller.signal.aborted || res.destroyed) return;
     finished = true;
+    log.warn("ai.chat_failed", {
+      status: error?.status || 500,
+      message: error?.message,
+      conversationId,
+      latencyMs: Date.now() - streamStartedAt,
+    });
+    await recordUsage({
+      ownerId,
+      conversationId,
+      provider: error?.provider || "unknown",
+      model: null,
+      status: "error",
+      latencyMs: Date.now() - streamStartedAt,
+      promptChars: prompt.length,
+      completionChars: assistantText.length,
+    });
     writeSse(res, {
       type: "error",
       message: error.message || "Layanan AI belum dapat menjawab.",
@@ -804,12 +805,22 @@ async function authSession(req, res) {
 async function route(req, res) {
   const url = new URL(req.url, "http://localhost");
   const pathname = url.pathname;
-  if (req.method === "GET" && pathname === "/api/health")
+  if (req.method === "GET" && pathname === "/api/health") {
+    const availableProviders = providers.available().length;
     return sendJson(res, dbReady ? 200 : 503, {
       ok: dbReady,
       database: dbReady ? "up" : "down",
+      migrations: {
+        current: migrationState.current,
+        total: migrationState.total,
+      },
+      ai: {
+        configuredProviders: availableProviders,
+        ready: availableProviders > 0,
+      },
       uptimeSeconds: Math.round(process.uptime()),
     });
+  }
   if (req.method === "GET" && pathname === "/api/auth/session")
     return authSession(req, res);
   if (req.method === "POST" && pathname === "/api/auth/start") {
@@ -853,22 +864,38 @@ async function route(req, res) {
     return listConversations(url, res, ownerId);
   if (req.method === "POST" && pathname === "/api/conversations")
     return createConversationRoute(req, res, ownerId);
-  if (req.method === "POST" && pathname === "/api/chat")
+  if (req.method === "GET" && pathname === "/api/ai/status") {
+    if (url.searchParams.get("probe") === "1") await providers.probe();
+    return sendJson(res, 200, {
+      order: providers.order,
+      active: providers.available().map((provider) => provider.id),
+      providers: providers.describe(),
+    });
+  }
+  if (req.method === "POST" && pathname === "/api/chat") {
+    if (!enforceLimit(limiters.chat, ownerId, res)) return;
     return writeModelStream(req, res, ownerId);
-  if (req.method === "POST" && pathname === "/api/uploads")
+  }
+  if (req.method === "POST" && pathname === "/api/uploads") {
+    if (!enforceLimit(limiters.upload, ownerId, res)) return;
     return uploadAttachment(req, res, url, ownerId);
+  }
   if (req.method === "POST" && pathname === "/api/feedback")
     return feedback(req, res, ownerId);
   if (req.method === "GET" && pathname === "/api/binance/status")
     return sendJson(res, 200, binance.configurationStatus());
-  if (req.method === "POST" && pathname === "/api/binance/sync")
+  if (req.method === "POST" && pathname === "/api/binance/sync") {
+    if (!enforceLimit(limiters.binance, ownerId, res)) return;
     return sendJson(res, 200, await binance.syncAccount());
-  if (req.method === "POST" && pathname === "/api/binance/analyze")
+  }
+  if (req.method === "POST" && pathname === "/api/binance/analyze") {
+    if (!enforceLimit(limiters.binance, ownerId, res)) return;
     return sendJson(
       res,
       200,
       await binance.analyzeStopLoss(await readJson(req, 8192)),
     );
+  }
 
   const messagesMatch = pathname.match(
     /^\/api\/conversations\/([0-9a-f-]{36})\/messages$/i,
@@ -885,7 +912,29 @@ async function route(req, res) {
   return sendJson(res, 404, { error: "Endpoint tidak ditemukan." });
 }
 
+function requestPath(req) {
+  try {
+    return new URL(req.url, "http://localhost").pathname;
+  } catch {
+    return "invalid";
+  }
+}
+
 const server = http.createServer(async (req, res) => {
+  const requestId = crypto.randomUUID();
+  const startedAt = Date.now();
+  res.setHeader("X-Request-Id", requestId);
+  res.on("finish", () => {
+    const pathname = requestPath(req);
+    if (pathname === "/api/health") return;
+    log.info("http.request", {
+      requestId,
+      method: req.method,
+      path: pathname,
+      status: res.statusCode,
+      ms: Date.now() - startedAt,
+    });
+  });
   try {
     await route(req, res);
   } catch (error) {
@@ -900,7 +949,13 @@ const server = http.createServer(async (req, res) => {
       return;
     }
     const status = Number(error.status) || 500;
-    if (status >= 500) console.error("[nalar] request failed", status);
+    if (status >= 500)
+      log.error("http.request_failed", {
+        requestId,
+        status,
+        message: error.message,
+        path: requestPath(req),
+      });
     sendJson(res, status, {
       error:
         status === 500
@@ -910,17 +965,28 @@ const server = http.createServer(async (req, res) => {
   }
 });
 
-server.headersTimeout = 30000;
-server.requestTimeout = 120000;
+server.headersTimeout = CONFIG.limits.headersTimeoutMs;
+server.requestTimeout = CONFIG.limits.requestTimeoutMs;
 
 server.listen(PORT, "0.0.0.0", () =>
-  console.log(`Nalar AI listening on port ${PORT}`),
+  log.info("server.listening", {
+    port: PORT,
+    providers: providers.available().map((provider) => provider.id),
+    migrations: migrationState.current,
+  }),
 );
 
-initDatabase().catch((error) => {
-  dbReady = false;
-  console.error("[nalar] Database initialization failed:", error.message);
-});
+initDatabase()
+  .then(() => {
+    log.info("db.ready", {
+      migrations: migrationState.current,
+      applied: migrationState.ran,
+    });
+  })
+  .catch((error) => {
+    dbReady = false;
+    log.error("db.init_failed", { message: error.message });
+  });
 
 async function shutdown() {
   if (shuttingDown) return;

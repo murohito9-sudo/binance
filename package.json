@@ -1,6 +1,6 @@
 {
   "name": "nalarai",
-  "version": "1.2.0",
+  "version": "1.3.0",
   "private": true,
   "packageManager": "npm@10.9.9",
   "description": "Asisten AI percakapan dan analisis Spot baca-saja berbahasa Indonesia",
