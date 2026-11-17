@@ -805,6 +805,11 @@ async function authSession(req, res) {
 async function route(req, res) {
   const url = new URL(req.url, "http://localhost");
   const pathname = url.pathname;
+  if (req.method === "GET" && pathname === "/api/live")
+    return sendJson(res, 200, {
+      ok: true,
+      uptimeSeconds: Math.round(process.uptime()),
+    });
   if (req.method === "GET" && pathname === "/api/health") {
     const availableProviders = providers.available().length;
     return sendJson(res, dbReady ? 200 : 503, {
@@ -926,7 +931,7 @@ const server = http.createServer(async (req, res) => {
   res.setHeader("X-Request-Id", requestId);
   res.on("finish", () => {
     const pathname = requestPath(req);
-    if (pathname === "/api/health") return;
+    if (pathname === "/api/health" || pathname === "/api/live") return;
     log.info("http.request", {
       requestId,
       method: req.method,
